@@ -27,7 +27,7 @@ class PerformanceUtils {
   }
   
   // Batch multiple setState calls
-  static void batchSetState(State state, List<VoidCallback> updates) {
+  static void batchSetState(State<StatefulWidget> state, List<VoidCallback> updates) {
     if (updates.isEmpty) return;
     
     state.setState(() {
@@ -162,7 +162,7 @@ class OptimizedGridCell extends StatelessWidget {
     required this.col,
     required this.child,
     this.onTap,
-  }) : super(key: ValueKey('cell-$row-$col'));
+  }) : super(key: key);
   
   @override
   Widget build(BuildContext context) {

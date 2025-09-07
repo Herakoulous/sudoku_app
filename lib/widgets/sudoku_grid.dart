@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import '../models/sudoku_cell.dart';
 import '../models/variants/variant_constraint.dart';
-import '../utils/beautiful_theme.dart';
 import 'sudoku/variant_overlays/kropki_overlay.dart';
 import 'sudoku/variant_overlays/killer_overlay.dart';
 import 'sudoku/variant_overlays/xv_overlay.dart';

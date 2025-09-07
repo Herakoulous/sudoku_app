@@ -50,6 +50,10 @@ class GameLogicService {
         // Toggle color highlighting - don't affect digit or marks
         cell.colorHighlight = cell.colorHighlight == number ? 0 : number;
         break;
+      case InputMode.multiSelect:
+        // Multi-select mode doesn't apply cell actions directly
+        // This is handled by the UI layer
+        break;
     }
     
     // Clear cache when cell changes
