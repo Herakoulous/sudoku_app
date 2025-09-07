@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'screens/menu_screen.dart';
 import 'screens/game_screen.dart';
 import 'models/puzzle_repository.dart';
-import 'utils/beautiful_theme.dart';
 
 void main() {
   // Ensure Flutter is initialized
@@ -34,8 +33,15 @@ class SudokuApp extends StatelessWidget {
     return MaterialApp(
       title: 'Sudoku',
       debugShowCheckedModeBanner: false,
-      theme: BeautifulTheme.lightTheme,
-      darkTheme: BeautifulTheme.darkTheme,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
       themeMode: ThemeMode.system,
       home: const MenuScreen(),
       routes: {

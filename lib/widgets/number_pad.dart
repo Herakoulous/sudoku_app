@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/input_mode.dart';
-import '../utils/beautiful_theme.dart';
 
 class NumberPad extends StatefulWidget {
   final InputMode currentMode;
@@ -143,30 +142,22 @@ class _NumberPadState extends State<NumberPad> {
       child: Container(
         margin: const EdgeInsets.all(3),
         height: height,
-        child: BeautifulButton(
-          onPressed: isEnabled ? onPressed : null,
-          backgroundColor: isActive ? const Color(0xFF6366F1) : bgColor,
-          borderRadius: 16,
-          elevation: isEnabled ? 8 : 0,
+        child: GestureDetector(
+          onTap: isEnabled ? onPressed : null,
           child: Container(
-            width: double.infinity,
-            height: double.infinity,
             decoration: BoxDecoration(
+              color: isActive ? const Color(0xFF6366F1) : bgColor,
               borderRadius: BorderRadius.circular(16),
-              gradient: isActive 
-                  ? const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
-                    )
-                  : null,
-              color: isActive ? null : bgColor,
-              boxShadow: isEnabled && !isActive ? [
+              boxShadow: isEnabled ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withOpacity(0.2),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
               ] : null,
             ),
+            width: double.infinity,
+            height: double.infinity,
             child: Center(
               child: DefaultTextStyle(
                 style: TextStyle(

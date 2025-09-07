@@ -4,7 +4,6 @@ import '../models/puzzle_repository.dart';
 import '../models/game_state.dart';
 import '../models/puzzle.dart';
 import '../models/variants/variant_constraint.dart';
-import '../utils/beautiful_theme.dart';
 
 class MenuScreen extends StatelessWidget {
   const MenuScreen({Key? key}) : super(key: key);
@@ -293,7 +292,14 @@ class MenuScreen extends StatelessWidget {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: BeautifulTheme.backgroundGradient,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF667eea),
+              Color(0xFF764ba2),
+            ],
+          ),
         ),
         child: SafeArea(
           child: SingleChildScrollView(
@@ -392,8 +398,13 @@ class MenuScreen extends StatelessWidget {
                 const SizedBox(height: 40),
 
                 // Beautiful Statistics Card
-                GlassmorphismContainer(
+                Container(
                   padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
+                  ),
                   child: Column(
                     children: [
                       Text(
@@ -418,14 +429,19 @@ class MenuScreen extends StatelessWidget {
                 const SizedBox(height: 30),
 
                 // Beautiful Settings Button
-                BeautifulButton(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6B7280), Color(0xFF4B5563)],
-                  ),
-                  onPressed: () {
+                GestureDetector(
+                  onTap: () {
                     // TODO: Add settings screen
                   },
-                  child: Row(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6B7280), Color(0xFF4B5563)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Icon(Icons.settings_rounded, color: Colors.white),
@@ -438,6 +454,7 @@ class MenuScreen extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
               ],
@@ -491,10 +508,13 @@ class MenuScreen extends StatelessWidget {
     required Gradient gradient,
     required VoidCallback onTap,
   }) {
-    return BeautifulButton(
-      gradient: gradient,
-      onPressed: onTap,
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(20),
+        ),
         padding: const EdgeInsets.all(20),
         child: Row(
           children: [
