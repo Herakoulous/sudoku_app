@@ -1,29 +1,36 @@
 class SudokuCell {
   int? digit;
-  Set<int> cornerMarks = {};
-  Set<int> centerMarks = {};
-  bool isGiven = false;
-  bool hasConflict = false;
-  int colorHighlight = 0;
+  Set<int> cornerMarks;
+  Set<int> centerMarks;
+  int colorHighlight; // 0 = no color, 1-9 = different colors
+  bool isGiven;
+  bool hasConflict;
 
-  SudokuCell({this.digit, this.isGiven = false});
+  SudokuCell({
+    this.digit,
+    this.cornerMarks = const {},
+    this.centerMarks = const {},
+    this.colorHighlight = 0,
+    this.isGiven = false,
+    this.hasConflict = false,
+  });
 
-  void clearAll() {
-    if (!isGiven) {
-      digit = null;
-      cornerMarks.clear();
-      centerMarks.clear();
-      colorHighlight = 0;
-    }
-  }
-
-  SudokuCell copy() {
-    final newCell = SudokuCell(digit: digit, isGiven: isGiven);
-    newCell.cornerMarks = Set.from(cornerMarks);
-    newCell.centerMarks = Set.from(centerMarks);
-    newCell.hasConflict = hasConflict;
-    newCell.colorHighlight = colorHighlight;
-    return newCell;
+  SudokuCell copyWith({
+    int? digit,
+    Set<int>? cornerMarks,
+    Set<int>? centerMarks,
+    int? colorHighlight,
+    bool? isGiven,
+    bool? hasConflict,
+  }) {
+    return SudokuCell(
+      digit: digit ?? this.digit,
+      cornerMarks: cornerMarks ?? this.cornerMarks,
+      centerMarks: centerMarks ?? this.centerMarks,
+      colorHighlight: colorHighlight ?? this.colorHighlight,
+      isGiven: isGiven ?? this.isGiven,
+      hasConflict: hasConflict ?? this.hasConflict,
+    );
   }
 
   Map<String, dynamic> toJson() {
@@ -31,21 +38,20 @@ class SudokuCell {
       'digit': digit,
       'cornerMarks': cornerMarks.toList(),
       'centerMarks': centerMarks.toList(),
+      'colorHighlight': colorHighlight,
       'isGiven': isGiven,
       'hasConflict': hasConflict,
-      'colorHighlight': colorHighlight,
     };
   }
 
   static SudokuCell fromJson(Map<String, dynamic> json) {
-    final cell = SudokuCell(
+    return SudokuCell(
       digit: json['digit'],
+      cornerMarks: Set<int>.from(json['cornerMarks'] ?? []),
+      centerMarks: Set<int>.from(json['centerMarks'] ?? []),
+      colorHighlight: json['colorHighlight'] ?? 0,
       isGiven: json['isGiven'] ?? false,
+      hasConflict: json['hasConflict'] ?? false,
     );
-    cell.cornerMarks = Set<int>.from(json['cornerMarks'] ?? []);
-    cell.centerMarks = Set<int>.from(json['centerMarks'] ?? []);
-    cell.hasConflict = json['hasConflict'] ?? false;
-    cell.colorHighlight = json['colorHighlight'] ?? 0;
-    return cell;
   }
 }

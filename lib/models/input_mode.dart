@@ -1,9 +1,11 @@
-enum InputMode { 
-  normal, 
-  corner, 
-  center, 
-  color, 
-  multiSelect 
+enum InputMode {
+  normal,
+  corner,
+  center,
+  color,
+  sideNotes,
+  centerNotes,
+  coloring,
 }
 
 extension InputModeExtension on InputMode {
@@ -17,8 +19,12 @@ extension InputModeExtension on InputMode {
         return 'Center';
       case InputMode.color:
         return 'Color';
-      case InputMode.multiSelect:
-        return 'Multi-Select';
+      case InputMode.sideNotes:
+        return 'Side Notes';
+      case InputMode.centerNotes:
+        return 'Center Notes';
+      case InputMode.coloring:
+        return 'Coloring';
     }
   }
 }

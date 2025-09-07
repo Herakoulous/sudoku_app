@@ -4,19 +4,20 @@ import '../models/puzzle_repository.dart';
 import '../models/game_state.dart';
 import '../models/puzzle.dart';
 import '../models/variants/variant_constraint.dart';
+import '../services/menu_service.dart';
 
 class MenuScreen extends StatelessWidget {
   const MenuScreen({Key? key}) : super(key: key);
 
   Future<void> _continuePlaying(BuildContext context) async {
-    final puzzleId = await GameState.getMostRecentPuzzleId();
+    final puzzleId = await MenuService.getMostRecentPuzzleId();
     if (puzzleId != null) {
       Navigator.pushNamed(context, '/game', arguments: puzzleId);
     }
   }
 
   void _showPuzzlePreview(BuildContext context, Puzzle puzzle) async {
-    final savedState = await GameState.loadFromStorage(puzzle.id);
+    final savedState = await MenuService.loadFromStorage(puzzle.id);
     final hasProgress = savedState != null && !savedState.isPuzzleSolved;
 
     showDialog(
@@ -106,7 +107,7 @@ class MenuScreen extends StatelessWidget {
                       TextButton(
                         onPressed: () async {
                           // Restart puzzle
-                          await GameState.clearSavedState(puzzle.id);
+                          await MenuService.clearSavedState(puzzle.id);
                           Navigator.of(context).pop();
                           Navigator.pushNamed(
                             context,
