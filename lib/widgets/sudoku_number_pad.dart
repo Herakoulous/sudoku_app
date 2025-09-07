@@ -120,7 +120,7 @@ class SudokuNumberPad extends StatelessWidget {
   Widget _buildNumberButton(int number, Color color) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.all(2),
+        margin: const EdgeInsets.all(1),
         child: ElevatedButton(
           onPressed: () => onNumberPressed(number),
           style: ElevatedButton.styleFrom(
@@ -129,15 +129,25 @@ class SudokuNumberPad extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(4),
           ),
-          child: Text(
-            number.toString(),
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          child: currentMode == InputMode.coloring || currentMode == InputMode.color
+              ? Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
+                )
+              : Text(
+                  number.toString(),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
         ),
       ),
     );
@@ -151,7 +161,7 @@ class SudokuNumberPad extends StatelessWidget {
   }) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.all(2),
+        margin: const EdgeInsets.all(1),
         child: ElevatedButton(
           onPressed: onPressed,
           style: ElevatedButton.styleFrom(
@@ -160,9 +170,9 @@ class SudokuNumberPad extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(4),
           ),
-          child: Icon(icon, size: 20),
+          child: Icon(icon, size: 18),
         ),
       ),
     );
@@ -175,7 +185,7 @@ class SudokuNumberPad extends StatelessWidget {
   }) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.all(2),
+        margin: const EdgeInsets.all(1),
         child: ElevatedButton(
           onPressed: onPressed,
           style: ElevatedButton.styleFrom(
@@ -184,9 +194,9 @@ class SudokuNumberPad extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(4),
           ),
-          child: Icon(icon, size: 20),
+          child: Icon(icon, size: 18),
         ),
       ),
     );

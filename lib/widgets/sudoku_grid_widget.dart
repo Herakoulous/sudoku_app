@@ -47,19 +47,22 @@ class _SudokuGridWidgetState extends State<SudokuGridWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 1,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.black, width: 3),
-        ),
-        child: Column(
-          children: List.generate(9, (row) => 
-            Expanded(
-              child: Row(
-                children: List.generate(9, (col) => 
-                  Expanded(
-                    child: _buildCell(row, col),
+    return Container(
+      width: double.infinity,
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.black, width: 4),
+          ),
+          child: Column(
+            children: List.generate(9, (row) => 
+              Expanded(
+                child: Row(
+                  children: List.generate(9, (col) => 
+                    Expanded(
+                      child: _buildCell(row, col),
+                    ),
                   ),
                 ),
               ),
@@ -125,36 +128,36 @@ class _SudokuGridWidgetState extends State<SudokuGridWidget> {
     
     // Top border
     if (row == 0) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 4));
     } else if (row % 3 == 0) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 3));
     } else {
       borders.add(const BorderSide(color: Colors.grey, width: 1));
     }
     
     // Bottom border
     if (row == 8) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 4));
     } else if ((row + 1) % 3 == 0) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 3));
     } else {
       borders.add(const BorderSide(color: Colors.grey, width: 1));
     }
     
     // Left border
     if (col == 0) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 4));
     } else if (col % 3 == 0) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 3));
     } else {
       borders.add(const BorderSide(color: Colors.grey, width: 1));
     }
     
     // Right border
     if (col == 8) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 4));
     } else if ((col + 1) % 3 == 0) {
-      borders.add(const BorderSide(color: Colors.black, width: 2));
+      borders.add(const BorderSide(color: Colors.black, width: 3));
     } else {
       borders.add(const BorderSide(color: Colors.grey, width: 1));
     }
