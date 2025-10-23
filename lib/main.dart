@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'widgets/menu_screen.dart'; 
+import 'widgets/menu_screen.dart';
 
 void main() {
   runApp(const SudokuApp());
