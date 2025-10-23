@@ -1,371 +1,429 @@
-// widgets/sudoku_grid.dart
+// File path: lib/widgets/sudoku_grid.dart
 import 'package:flutter/material.dart';
+import '../controllers/game_controller.dart';
 import '../models/sudoku_cell.dart';
-import '../models/variants/variant_constraint.dart';
-import 'sudoku/variant_overlays/kropki_overlay.dart';
-import 'sudoku/variant_overlays/killer_overlay.dart';
-import 'sudoku/variant_overlays/xv_overlay.dart';
-import 'sudoku/variant_overlays/german_whispers_overlay.dart';
-import 'sudoku/variant_overlays/thermometer_overlay.dart';
-import 'sudoku/variant_overlays/sandwich_overlay.dart';
+import '../models/position.dart';
 
-class SudokuGrid extends StatelessWidget {
-  final List<List<SudokuCell>> grid;
-  final int? selectedRow, selectedCol;
-  final Set<String> relatedCells;
-  final Set<String> selectedCells;
-  final Set<String> sameNumberCells;
-  final Function(int, int) onCellTapped;
-  final Function(int, int) onCellDragStart;
-  final Function(int, int) onCellDragUpdate;
-  final VoidCallback onCellDragEnd;
-  final List<VariantConstraint>? variantConstraints;
+class SudokuGrid extends StatefulWidget {
+  final GameController controller;
 
   const SudokuGrid({
-    Key? key,
-    required this.grid,
-    required this.selectedRow,
-    required this.selectedCol,
-    required this.relatedCells,
-    required this.selectedCells,
-    required this.sameNumberCells,
-    required this.onCellTapped,
-    required this.onCellDragStart,
-    required this.onCellDragUpdate,
-    required this.onCellDragEnd,
-    this.variantConstraints,
-  }) : super(key: key);
+    super.key,
+    required this.controller,
+  });
+
+  @override
+  State<SudokuGrid> createState() => _SudokuGridState();
+}
+
+class _SudokuGridState extends State<SudokuGrid> {
+  // 🔥 NEW: Drag selection tracking
+  bool _isDragging = false;
+  Set<Position> _draggedCells = {};
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onGameStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onGameStateChanged);
+    super.dispose();
+  }
+
+  void _onGameStateChanged() {
+    print('===== _onGameStateChanged called in SudokuGrid =====');
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final gridSize = constraints.maxWidth;
-        final cellSize = gridSize / 9; // Simplified cell size calculation
-
-        return Container(
-          width: gridSize,
-          height: gridSize,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+    print('===== SudokuGrid BUILD called =====');
+    return Padding(
+      padding: const EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 50), //top:50 is used in order to be correctly centered
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 9,
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Stack(
-              children: [
-                // Beautiful gradient background
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFFFFFFF),
-                        Color(0xFFF8FAFC),
-                      ],
-                    ),
-                  ),
-                ),
-                
-                // Grid lines background
-                CustomPaint(
-                  size: Size(gridSize, gridSize),
-                  painter: _GridLinesPainter(),
-                ),
-                
-                // Main grid with interactive cells
-                RepaintBoundary(
-                  child: SizedBox(
-                    width: gridSize,
-                    height: gridSize,
-                    child: Stack(
-                      children: List.generate(81, (index) {
-                        final row = index ~/ 9;
-                        final col = index % 9;
-                        return Positioned(
-                          left: col * cellSize,
-                          top: row * cellSize,
-                          width: cellSize,
-                          height: cellSize,
-                          child: _SudokuCell(
-                            key: ValueKey('cell-$row-$col'),
-                            row: row,
-                            col: col,
-                            cell: grid[row][col],
-                            cellSize: cellSize,
-                            isSelected: selectedRow == row && selectedCol == col,
-                            isRelated: relatedCells.contains('$row-$col'),
-                            isMultiSelected: selectedCells.contains('$row-$col'),
-                            isSameNumber: sameNumberCells.contains('$row-$col'),
-                            onTap: () => onCellTapped(row, col),
-                            onDragStart: () => onCellDragStart(row, col),
-                            onDragUpdate: () => onCellDragUpdate(row, col),
-                            onDragEnd: onCellDragEnd,
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
-                ),
-                
-                // Variant overlays with RepaintBoundary - positioned to not block touches
-                if (variantConstraints != null)
-                  RepaintBoundary(
-                    child: IgnorePointer(
-                      child: Stack(
-                        children: _buildVariantOverlays(gridSize),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  List<Widget> _buildVariantOverlays(double gridSize) {
-    return variantConstraints!.map((constraint) {
-      switch (constraint.type) {
-        case 'kropki':
-          return KropkiOverlay(
-            constraints: [constraint as KropkiConstraint],
-            gridSize: gridSize,
-          );
-        case 'killer':
-          return KillerOverlay(
-            constraints: [constraint as KillerConstraint],
-            gridSize: gridSize,
-          );
-        case 'xv':
-          return XVOverlay(
-            constraints: [constraint as XVConstraint],
-            gridSize: gridSize,
-          );
-        case 'german_whispers':
-          return GermanWhispersOverlay(
-            constraints: [constraint as GermanWhispersConstraint],
-            gridSize: gridSize,
-          );
-        case 'thermometer':
-          return ThermometerOverlay(
-            constraints: [constraint as ThermometerConstraint],
-            gridSize: gridSize,
-          );
-        case 'sandwich':
-          return SandwichOverlay(
-            constraints: [constraint as SandwichConstraint],
-            gridSize: gridSize,
-          );
-        default:
-          return const SizedBox.shrink();
-      }
-    }).toList();
-  }
-}
-
-/// Custom painter for grid lines
-class _GridLinesPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final thinPaint = Paint()
-      ..color = const Color(0xFF64748B)
-      ..strokeWidth = 1.0;
-      
-    final thickPaint = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..strokeWidth = 3.0;
-
-    final cellSize = size.width / 9;
-
-    // Draw vertical lines
-    for (int i = 0; i <= 9; i++) {
-      final x = i * cellSize;
-      final paint = (i % 3 == 0) ? thickPaint : thinPaint;
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        paint,
-      );
-    }
-
-    // Draw horizontal lines
-    for (int i = 0; i <= 9; i++) {
-      final y = i * cellSize;
-      final paint = (i % 3 == 0) ? thickPaint : thinPaint;
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Optimized individual cell widget without borders
-class _SudokuCell extends StatelessWidget {
-  final int row, col;
-  final SudokuCell cell;
-  final double cellSize;
-  final bool isSelected, isRelated, isMultiSelected, isSameNumber;
-  final VoidCallback onTap, onDragStart, onDragUpdate, onDragEnd;
-
-  const _SudokuCell({
-    Key? key,
-    required this.row,
-    required this.col,
-    required this.cell,
-    required this.cellSize,
-    required this.isSelected,
-    required this.isRelated,
-    required this.isMultiSelected,
-    required this.isSameNumber,
-    required this.onTap,
-    required this.onDragStart,
-    required this.onDragUpdate,
-    required this.onDragEnd,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: GestureDetector(
-        onTap: onTap,
-        onPanStart: (_) => onDragStart(),
-        onPanUpdate: (_) => onDragUpdate(),
-        onPanEnd: (_) => onDragEnd(),
-        behavior: HitTestBehavior.opaque, // Ensures the entire area is tappable
-        child: Container(
-          width: cellSize,
-          height: cellSize,
-          color: _getCellColor(), // Removed decoration, using simple color
-          child: _buildCellContent(),
+          itemCount: 81,
+          itemBuilder: (context, index) {
+            final row = index ~/ 9;
+            final col = index % 9;
+            final cell = widget.controller.gameState.grid[row][col];
+            return buildCell(row, col, cell);
+          },
         ),
       ),
     );
   }
 
-  Color _getCellColor() {
-    if (isSelected) {
-      return const Color(0xFF6366F1).withOpacity(0.3);
+  // 🔥 MODIFIED: Prevent tap from firing after drag
+  void onCellTap(int row, int col) {
+    // Don't process tap if we just finished a drag
+    if (_draggedCells.length > 1) {
+      return;
     }
-    if (isMultiSelected) {
-      return const Color(0xFF8B5CF6).withOpacity(0.2);
-    }
-    if (isRelated) {
-      return const Color(0xFF06B6D4).withOpacity(0.1);
-    }
-    if (isSameNumber) {
-      return const Color(0xFF10B981).withOpacity(0.2);
-    }
-    if (cell.hasConflict) {
-      return const Color(0xFFEF4444).withOpacity(0.3);
-    }
-    if (cell.colorHighlight > 0) {
-      return _getHighlightColor(cell.colorHighlight);
-    }
-    return Colors.transparent;
+
+    widget.controller.handleCellTap(row, col);
   }
 
-  Color _getHighlightColor(int colorIndex) {
-    const colors = [
-      Color(0xFFEF4444), // Red
-      Color(0xFF6366F1), // Indigo
-      Color(0xFF10B981), // Emerald
-      Color(0xFFF59E0B), // Amber
-      Color(0xFF8B5CF6), // Purple
-      Color(0xFF06B6D4), // Cyan
-    ];
-    return colors[colorIndex % colors.length].withOpacity(0.2);
+  // 🔥 NEW: Drag start handler
+  void onCellDragStart(int row, int col) {
+    print('🖐️ Drag started at ($row, $col)');
+    setState(() {
+      _isDragging = true;
+      _draggedCells.clear();
+    });
+
+    // Select the starting cell
+    final pos = Position(row, col);
+    _draggedCells.add(pos);
+
+    // Clear previous selection and select just this cell
+    widget.controller.gameState.selectedCells.clear();
+    widget.controller.gameState.selectedCells.add(pos);
+
+    widget.controller.updateHighlights();
   }
 
-  Widget _buildCellContent() {
-    if (cell.digit != null) {
-      return Center(
-        child: Text(
-          '${cell.digit}',
-          style: TextStyle(
-            fontSize: cellSize * 0.4, // Responsive font size
-            fontWeight: cell.isGiven ? FontWeight.bold : FontWeight.w600,
-            color: cell.isGiven 
-                ? const Color(0xFF1E293B) 
-                : const Color(0xFF6366F1),
-            shadows: cell.isGiven ? null : [
-              Shadow(
-                color: const Color(0xFF6366F1).withOpacity(0.3),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+  // 🔥 NEW: Drag update handler
+  void onCellDragUpdate(DragUpdateDetails details) {
+    if (!_isDragging) return;
 
-    if (cell.cornerMarks.isNotEmpty || cell.centerMarks.isNotEmpty) {
-      return Stack(
+    // Get the render box to calculate position
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+
+    final localPosition = box.globalToLocal(details.globalPosition);
+
+    // 🔥 ACCOUNT FOR TOP PADDING (50 pixels)
+    final adjustedY = localPosition.dy - 50;
+
+    // Calculate cell size (assuming square cells)
+    // Use width minus horizontal padding (16 left + 16 right = 32)
+    final cellSize = (box.size.width - 32) / 9;
+
+    // Calculate which cell we're over
+    final col = ((localPosition.dx - 16) / cellSize).floor().clamp(0, 8);
+    final row = (adjustedY / cellSize).floor().clamp(0, 8);
+
+    final pos = Position(row, col);
+
+    // Only update if this is a new cell
+    if (!_draggedCells.contains(pos)) {
+      print('🖐️ Dragged to ($row, $col)');
+      setState(() {
+        _draggedCells.add(pos);
+      });
+
+      // Update selection with all dragged cells
+      widget.controller.gameState.selectedCells.clear();
+      widget.controller.gameState.selectedCells.addAll(_draggedCells);
+
+      widget.controller.updateHighlights();
+    }
+  }
+
+  // 🔥 NEW: Drag end handler
+  void onCellDragEnd() {
+    print('🖐️ Drag ended - ${_draggedCells.length} cells selected');
+
+    // Small delay to prevent tap from firing
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          _isDragging = false;
+          _draggedCells.clear();
+        });
+      }
+    });
+  }
+
+  Widget buildCell(int row, int col, SudokuCell cell) {
+    final selectedNumber = widget.controller.getSelectedNumber();
+    final isSameNumberAndColored = selectedNumber != null &&
+        cell.number == selectedNumber &&
+        cell.number != null &&
+        cell.cellColor != null;
+
+    return GestureDetector(
+      onTap: () => onCellTap(row, col),
+      onPanStart: (details) => onCellDragStart(row, col),
+      onPanUpdate: (details) => onCellDragUpdate(details),
+      onPanEnd: (details) => onCellDragEnd(),
+      child: Stack(
         children: [
-          // Corner marks
-          if (cell.cornerMarks.isNotEmpty)
-            Positioned(
-              top: 2,
-              left: 2,
-              child: _buildMarks(cell.cornerMarks, cellSize * 0.12, true),
+          // Base container - NO BORDER, just background color
+          Container(
+            color: getCellBackgroundColor(cell),
+          ),
+          // Overlay 1: Normal grid borders
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: getCellBorder(cell, row, col),
+                ),
+              ),
             ),
-          // Center marks
-          if (cell.centerMarks.isNotEmpty)
-            Center(
-              child: _buildMarks(cell.centerMarks, cellSize * 0.18, false),
-            ),
-        ],
-      );
-    }
-
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildMarks(Set<int> marks, double fontSize, bool isCorner) {
-    final sortedMarks = marks.toList()..sort();
-    final rows = (sortedMarks.length / 3).ceil();
-    
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(rows, (rowIndex) {
-        final startIndex = rowIndex * 3;
-        final endIndex = (startIndex + 3).clamp(0, sortedMarks.length);
-        final rowMarks = sortedMarks.sublist(startIndex, endIndex);
-        
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: rowMarks.map((mark) => 
-            SizedBox(
-              width: fontSize * 1.2,
-              height: fontSize * 1.2,
-              child: Center(
-                child: Text(
-                  '$mark',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
+          ),
+          // Overlay 2: Colored thick border (when same number and colored)
+          if (isSameNumberAndColored)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: cell.cellColor!, width: 3),
                   ),
                 ),
               ),
             ),
-          ).toList(),
-        );
-      }),
+          // Overlay 3: Error border (if needed)
+          if (cell.isError)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.red, width: 2),
+                  ),
+                ),
+              ),
+            ),
+          // Content ON TOP of all borders
+          Positioned.fill(
+            child: _buildCellContent(cell),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildCellContent(SudokuCell cell) {
+    // If there's a main number, show it
+    if (cell.number != null) {
+      return buildMainNumber(cell);
+    }
+
+    // Otherwise, show notes (both types if they exist)
+    final hasSideNotes = cell.sideNotes.isNotEmpty;
+    final hasCenterNotes = cell.centerNotes.isNotEmpty;
+
+    if (hasSideNotes && hasCenterNotes) {
+      // Show BOTH side and center notes
+      return Stack(
+        children: [
+          buildSideNotes(cell),
+          buildCenterNotes(cell),
+        ],
+      );
+    } else if (hasSideNotes) {
+      return buildSideNotes(cell);
+    } else if (hasCenterNotes) {
+      return buildCenterNotes(cell);
+    }
+
+    return const SizedBox.expand();
+  }
+
+  Widget buildMainNumber(SudokuCell cell) {
+    return Center(
+      child: Text(
+        cell.number.toString(),
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: cell.isGiven
+              ? Colors.black
+              : const Color.fromARGB(255, 0, 38, 70),
+        ),
+      ),
+    );
+  }
+
+  Widget buildSideNotes(SudokuCell cell) {
+    final notes = cell.sortedSideNotes.toList();
+
+    if (notes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Split notes into two rows (top gets extra if odd count)
+    final totalNotes = notes.length;
+    final topCount = (totalNotes + 1) ~/ 2;
+    final bottomCount = totalNotes - topCount;
+
+    final topNotes = notes.sublist(0, topCount);
+    final bottomNotes = bottomCount > 0 ? notes.sublist(topCount) : <int>[];
+
+    return Padding(
+      padding: const EdgeInsets.all(1.5),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Top row
+          SizedBox(
+            height: 12,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: topNotes.map((number) {
+                return Text(
+                  number.toString(),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // Bottom row
+          SizedBox(
+            height: 12,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: bottomNotes.map((number) {
+                return Text(
+                  number.toString(),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildCenterNotes(SudokuCell cell) {
+    final notes = cell.sortedCenterNotes.toList();
+
+    if (notes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Calculate font size based on number of notes
+    // Fewer notes = bigger font, more notes = smaller font
+    double fontSize;
+    if (notes.length <= 4) {
+      fontSize = 13;
+    } else if (notes.length <= 5) {
+      fontSize = 12;
+    } else if (notes.length <= 6) {
+      fontSize = 9;
+    } else if (notes.length <= 7) {
+      fontSize = 8;
+    } else if (notes.length <= 8) {
+      fontSize = 7;
+    } else {
+      fontSize = 6;
+    }
+
+    return Center(
+      child: Text(
+        notes.join(''),
+        style: TextStyle(
+          fontSize: fontSize,
+          color: Colors.black,
+          fontWeight: FontWeight.w400,
+          height: 1.0,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+
+  Border getCellBorder(SudokuCell cell, int row, int col) {
+    // NEW: If selected AND colored, show thick colored border
+    if (cell.isSelected && cell.cellColor != null) {
+      return Border.all(
+        width: 4,
+        color: cell.cellColor!,
+      );
+    }
+
+    // If highlighted AND colored, show thick colored border
+    if (cell.isHighlighted && cell.cellColor != null) {
+      return Border.all(
+        width: 4,
+        color: cell.cellColor!,
+      );
+    }
+
+    return Border(
+      top: BorderSide(
+        width: row % 3 == 0 ? 2 : 0.5,
+        color: Colors.black,
+      ),
+      left: BorderSide(
+        width: col % 3 == 0 ? 2 : 0.5,
+        color: Colors.black,
+      ),
+      right: BorderSide(
+        width: col == 8 ? 2 : 0.5,
+        color: Colors.black,
+      ),
+      bottom: BorderSide(
+        width: row == 8 ? 2 : 0.5,
+        color: Colors.black,
+      ),
+    );
+  }
+
+  Color getCellBackgroundColor(SudokuCell cell) {
+    // Get the selected number to highlight
+    final selectedNumber = widget.controller.getSelectedNumber();
+
+    Color color;
+
+    // Priority 1: Error (shows for conflicts)
+    if (cell.isError) {
+      color = Colors.red.shade200;
+    }
+    // Priority 2: Selected
+    else if (cell.isSelected) {
+      color = Colors.blue.shade600;
+    }
+    // Priority 3: Same number as selected (NEW!)
+    else if (selectedNumber != null &&
+        cell.number == selectedNumber &&
+        cell.number != null) {
+      color = Colors.blue.shade200; // Light blue for matching numbers
+    }
+    // Priority 4: Highlighted + Colored
+    else if (cell.isHighlighted && cell.cellColor != null) {
+      color = Colors.blue.shade100;
+    }
+    // Priority 5: Highlighted
+    else if (cell.isHighlighted) {
+      color = Colors.blue.shade100;
+    }
+    // Priority 6: Colored
+    else if (cell.cellColor != null) {
+      color = cell.cellColor!;
+    }
+    // Priority 7: Default
+    else {
+      color = Colors.white;
+    }
+
+    return color;
   }
 }
