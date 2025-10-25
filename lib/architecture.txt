@@ -20,6 +20,7 @@ ACTIVE IMPLEMENTATION (lib/):
     • action.dart                  → Undo/redo action records with grouping
     • sudoku_cell.dart             → Cell state with JSON serialization
     • game_state.dart              → Complete game state with factory
+    • variant_constraint.dart      → Variant constraint system (unused)
 - lib/controllers/
     • game_controller.dart         → Business logic (ChangeNotifier)
 - lib/widgets/
@@ -68,6 +69,13 @@ CORE DATA MODELS (lib/models/)
    - History system: actionHistory(List<Action>), currentActionIndex
    - Factory: newGame(puzzleId, difficulty) → builds grid from Puzzles
    - JSON serialization: toJson() (includes actionHistory), fromJson()
+
+5) VARIANT_CONSTRAINT (variant_constraint.dart) - UNUSED
+   - enum ConstraintType: KROPKI_WHITE, KROPKI_BLACK (with placeholders for future variants)
+   - class VariantConstraint: type, row1, col1, row2, col2
+   - Methods: isBetween(), involvesCell(), getOtherCell(), orientation
+   - JSON serialization: toJson(), fromJson()
+   - Note: This is a prepared system for future Sudoku variants but is not currently integrated
 
 =============================================================================
 BUSINESS LOGIC (lib/controllers/game_controller.dart)
@@ -232,6 +240,12 @@ ALTERNATIVE PERSISTENCE:
 - Replace SaveService with new implementation
 - Maintain same method signatures
 - Could support cloud sync, multiple saves, etc.
+
+VARIANT CONSTRAINTS:
+- The VariantConstraint system is already prepared but unused
+- To integrate: add constraints to GameState, update validation logic
+- Add constraint rendering to SudokuGrid
+- Implement constraint-specific validation rules
 
 =============================================================================
 PERFORMANCE CONSIDERATIONS

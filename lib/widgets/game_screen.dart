@@ -85,7 +85,9 @@ class _GameScreenState extends State<GameScreen> {
             ),
             const SizedBox(height: 20),
             Expanded(
-              child: SudokuGrid(controller: controller),
+              child: RepaintBoundary(
+                child: SudokuGrid(controller: controller),
+              ),
             ),
             NumberPad(controller: controller),
           ],

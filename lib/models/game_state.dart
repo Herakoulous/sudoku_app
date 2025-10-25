@@ -2,6 +2,7 @@
 import '../models/sudoku_cell.dart';
 import '../models/action.dart' as game_action;
 import '../models/position.dart';
+import '../models/variant_constraint.dart'; // 🔥 NEW IMPORT
 import '../data/puzzles.dart';
 
 enum GameMode { NORMAL, SIDE_NOTES, CENTER_NOTES, COLORING }
@@ -30,6 +31,9 @@ class GameState {
   List<game_action.Action> actionHistory;
   int currentActionIndex;
 
+  // 🔥 NEW: Variant constraints
+  List<VariantConstraint> constraints;
+
   GameState({
     required this.difficulty,
     required this.puzzleId,
@@ -42,12 +46,15 @@ class GameState {
     this.isPaused = false,
     List<game_action.Action>? actionHistory,
     this.currentActionIndex = -1,
+    List<VariantConstraint>? constraints, // 🔥 NEW PARAMETER
   })  : grid = grid ?? GameState._createEmptyGrid(),
         selectedCells = selectedCells ?? <Position>{},
         highlightedCells = highlightedCells ?? <Position>{},
-        actionHistory = actionHistory ?? <game_action.Action>[];
+        actionHistory = actionHistory ?? <game_action.Action>[],
+        constraints =
+            constraints ?? <VariantConstraint>[]; // 🔥 NEW INITIALIZATION
 
-  // ADD THIS METHOD:
+  // Create empty grid helper
   static List<List<SudokuCell>> _createEmptyGrid() {
     return List.generate(
       9,
@@ -58,16 +65,27 @@ class GameState {
     );
   }
 
-// Then replace the GameState.newGame factory with this:
-  factory GameState.newGame(String puzzleId, int difficulty) {
+  factory GameState.newGame(
+    String puzzleId,
+    int difficulty, {
+    List<VariantConstraint>? constraints,
+  }) {
     final puzzleData = Puzzles.getPuzzle(puzzleId);
 
+    print('🔍 Creating new game for puzzle: $puzzleId');
+    print('🔍 Puzzle data found: ${puzzleData != null}');
+
     if (puzzleData == null) {
+      print('❌ Puzzle data is NULL!');
       return GameState(
         puzzleId: puzzleId,
         difficulty: difficulty,
+        constraints: constraints,
       );
     }
+
+    print('🔍 Puzzle has ${puzzleData.constraints.length} constraints');
+    print('🔍 Constraints: ${puzzleData.constraints}');
 
     final grid = List.generate(9, (row) {
       return List.generate(9, (col) {
@@ -84,6 +102,8 @@ class GameState {
       puzzleId: puzzleId,
       difficulty: puzzleData.difficulty,
       grid: grid,
+      constraints: puzzleData
+          .constraints, // 🔥 FIX: Use puzzleData.constraints instead of passed parameter
     );
   }
 
@@ -98,8 +118,8 @@ class GameState {
       'selectionMode': selectionMode.index,
       'elapsedTime': elapsedTime.inSeconds,
       'currentActionIndex': currentActionIndex,
-      'actionHistory':
-          actionHistory.map((action) => action.toJson()).toList(), // THIS LINE
+      'actionHistory': actionHistory.map((action) => action.toJson()).toList(),
+      'constraints': constraints.map((c) => c.toJson()).toList(), // 🔥 NEW
     };
   }
 
@@ -117,6 +137,12 @@ class GameState {
         .map((actionJson) => game_action.Action.fromJson(actionJson))
         .toList();
 
+    // 🔥 NEW: Restore constraints
+    final constraintsData = json['constraints'] as List? ?? [];
+    final constraints = constraintsData
+        .map((constraintJson) => VariantConstraint.fromJson(constraintJson))
+        .toList();
+
     return GameState(
       difficulty: json['difficulty'],
       puzzleId: json['puzzleId'],
@@ -125,7 +151,8 @@ class GameState {
       selectionMode: SelectionMode.values[json['selectionMode'] ?? 0],
       elapsedTime: Duration(seconds: json['elapsedTime'] ?? 0),
       currentActionIndex: json['currentActionIndex'] ?? -1,
-      actionHistory: actionHistory, // THIS LINE
+      actionHistory: actionHistory,
+      constraints: constraints, // 🔥 NEW
     );
   }
 }

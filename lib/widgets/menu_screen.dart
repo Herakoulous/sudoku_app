@@ -25,8 +25,8 @@ class MenuScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => GameScreen(
-                      puzzleId: 'hard_001', // CHANGED THIS LINE
-                      difficulty: 8, // CHANGED THIS LINE
+                      puzzleId: 'kropki_02',
+                      difficulty: 6,
                     ),
                   ),
                 );

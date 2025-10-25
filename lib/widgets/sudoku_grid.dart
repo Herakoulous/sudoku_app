@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controllers/game_controller.dart';
 import '../models/sudoku_cell.dart';
 import '../models/position.dart';
+import '../models/variant_constraint.dart';
 
 class SudokuGrid extends StatefulWidget {
   final GameController controller;
@@ -17,7 +18,6 @@ class SudokuGrid extends StatefulWidget {
 }
 
 class _SudokuGridState extends State<SudokuGrid> {
-  // 🔥 NEW: Drag selection tracking
   bool _isDragging = false;
   Set<Position> _draggedCells = {};
 
@@ -34,97 +34,95 @@ class _SudokuGridState extends State<SudokuGrid> {
   }
 
   void _onGameStateChanged() {
-    print('===== _onGameStateChanged called in SudokuGrid =====');
+    print('===== _onGameStateChanged called at ${DateTime.now()} =====');
+    print('Stack trace: ${StackTrace.current}');
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    print('===== SudokuGrid BUILD called =====');
+    print('===== SudokuGrid BUILD at ${DateTime.now()} =====');
     return Padding(
-      padding: const EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 50), //top:50 is used in order to be correctly centered
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 50),
       child: AspectRatio(
         aspectRatio: 1,
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 9,
-          ),
-          itemCount: 81,
-          itemBuilder: (context, index) {
-            final row = index ~/ 9;
-            final col = index % 9;
-            final cell = widget.controller.gameState.grid[row][col];
-            return buildCell(row, col, cell);
-          },
+        child: Stack(
+          children: [
+            // Grid of cells
+            GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 9,
+              ),
+              itemCount: 81,
+              itemBuilder: (context, index) {
+                final row = index ~/ 9;
+                final col = index % 9;
+                final cell = widget.controller.gameState.grid[row][col];
+                return buildCell(row, col, cell);
+              },
+            ),
+            // Overlay: Kropki dots (rendered on top of grid)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: KropkiDotsPainter(
+                    constraints: widget.controller.gameState.constraints,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // 🔥 MODIFIED: Prevent tap from firing after drag
   void onCellTap(int row, int col) {
-    // Don't process tap if we just finished a drag
     if (_draggedCells.length > 1) {
       return;
     }
-
     widget.controller.handleCellTap(row, col);
   }
 
-  // 🔥 NEW: Drag start handler
   void onCellDragStart(int row, int col) {
-    print('🖐️ Drag started at ($row, $col)');
+    print('🖊️ Drag started at ($row, $col)');
     setState(() {
       _isDragging = true;
       _draggedCells.clear();
     });
 
-    // Select the starting cell
     final pos = Position(row, col);
     _draggedCells.add(pos);
 
-    // Clear previous selection and select just this cell
     widget.controller.gameState.selectedCells.clear();
     widget.controller.gameState.selectedCells.add(pos);
 
     widget.controller.updateHighlights();
   }
 
-  // 🔥 NEW: Drag update handler
   void onCellDragUpdate(DragUpdateDetails details) {
     if (!_isDragging) return;
 
-    // Get the render box to calculate position
     final RenderBox? box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
 
     final localPosition = box.globalToLocal(details.globalPosition);
 
-    // 🔥 ACCOUNT FOR TOP PADDING (50 pixels)
     final adjustedY = localPosition.dy - 50;
-
-    // Calculate cell size (assuming square cells)
-    // Use width minus horizontal padding (16 left + 16 right = 32)
     final cellSize = (box.size.width - 32) / 9;
 
-    // Calculate which cell we're over
     final col = ((localPosition.dx - 16) / cellSize).floor().clamp(0, 8);
     final row = (adjustedY / cellSize).floor().clamp(0, 8);
 
     final pos = Position(row, col);
 
-    // Only update if this is a new cell
     if (!_draggedCells.contains(pos)) {
-      print('🖐️ Dragged to ($row, $col)');
+      print('🖊️ Dragged to ($row, $col)');
       setState(() {
         _draggedCells.add(pos);
       });
 
-      // Update selection with all dragged cells
       widget.controller.gameState.selectedCells.clear();
       widget.controller.gameState.selectedCells.addAll(_draggedCells);
 
@@ -132,11 +130,9 @@ class _SudokuGridState extends State<SudokuGrid> {
     }
   }
 
-  // 🔥 NEW: Drag end handler
   void onCellDragEnd() {
-    print('🖐️ Drag ended - ${_draggedCells.length} cells selected');
+    print('🖊️ Drag ended - ${_draggedCells.length} cells selected');
 
-    // Small delay to prevent tap from firing
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) {
         setState(() {
@@ -207,17 +203,14 @@ class _SudokuGridState extends State<SudokuGrid> {
   }
 
   Widget _buildCellContent(SudokuCell cell) {
-    // If there's a main number, show it
     if (cell.number != null) {
       return buildMainNumber(cell);
     }
 
-    // Otherwise, show notes (both types if they exist)
     final hasSideNotes = cell.sideNotes.isNotEmpty;
     final hasCenterNotes = cell.centerNotes.isNotEmpty;
 
     if (hasSideNotes && hasCenterNotes) {
-      // Show BOTH side and center notes
       return Stack(
         children: [
           buildSideNotes(cell),
@@ -255,7 +248,6 @@ class _SudokuGridState extends State<SudokuGrid> {
       return const SizedBox.shrink();
     }
 
-    // Split notes into two rows (top gets extra if odd count)
     final totalNotes = notes.length;
     final topCount = (totalNotes + 1) ~/ 2;
     final bottomCount = totalNotes - topCount;
@@ -268,7 +260,6 @@ class _SudokuGridState extends State<SudokuGrid> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Top row
           SizedBox(
             height: 12,
             child: Row(
@@ -287,8 +278,6 @@ class _SudokuGridState extends State<SudokuGrid> {
               }).toList(),
             ),
           ),
-
-          // Bottom row
           SizedBox(
             height: 12,
             child: Row(
@@ -319,8 +308,6 @@ class _SudokuGridState extends State<SudokuGrid> {
       return const SizedBox.shrink();
     }
 
-    // Calculate font size based on number of notes
-    // Fewer notes = bigger font, more notes = smaller font
     double fontSize;
     if (notes.length <= 4) {
       fontSize = 13;
@@ -351,7 +338,6 @@ class _SudokuGridState extends State<SudokuGrid> {
   }
 
   Border getCellBorder(SudokuCell cell, int row, int col) {
-    // NEW: If selected AND colored, show thick colored border
     if (cell.isSelected && cell.cellColor != null) {
       return Border.all(
         width: 4,
@@ -359,7 +345,6 @@ class _SudokuGridState extends State<SudokuGrid> {
       );
     }
 
-    // If highlighted AND colored, show thick colored border
     if (cell.isHighlighted && cell.cellColor != null) {
       return Border.all(
         width: 4,
@@ -388,42 +373,99 @@ class _SudokuGridState extends State<SudokuGrid> {
   }
 
   Color getCellBackgroundColor(SudokuCell cell) {
-    // Get the selected number to highlight
     final selectedNumber = widget.controller.getSelectedNumber();
 
     Color color;
 
-    // Priority 1: Error (shows for conflicts)
     if (cell.isError) {
       color = Colors.red.shade200;
-    }
-    // Priority 2: Selected
-    else if (cell.isSelected) {
+    } else if (cell.isSelected) {
       color = Colors.blue.shade600;
-    }
-    // Priority 3: Same number as selected (NEW!)
-    else if (selectedNumber != null &&
+    } else if (selectedNumber != null &&
         cell.number == selectedNumber &&
         cell.number != null) {
-      color = Colors.blue.shade200; // Light blue for matching numbers
-    }
-    // Priority 4: Highlighted + Colored
-    else if (cell.isHighlighted && cell.cellColor != null) {
+      color = Colors.blue.shade200;
+    } else if (cell.isHighlighted && cell.cellColor != null) {
       color = Colors.blue.shade100;
-    }
-    // Priority 5: Highlighted
-    else if (cell.isHighlighted) {
+    } else if (cell.isHighlighted) {
       color = Colors.blue.shade100;
-    }
-    // Priority 6: Colored
-    else if (cell.cellColor != null) {
+    } else if (cell.cellColor != null) {
       color = cell.cellColor!;
-    }
-    // Priority 7: Default
-    else {
+    } else {
       color = Colors.white;
     }
 
     return color;
+  }
+}
+
+/// Custom painter for rendering Kropki dots between cells
+class KropkiDotsPainter extends CustomPainter {
+  final List<VariantConstraint> constraints;
+
+  KropkiDotsPainter({required this.constraints});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    print('🎨 PAINT at ${DateTime.now()}');
+    print('Stack trace:\n${StackTrace.current}');
+    print('🎨 Canvas size: $size');
+    print('🎨 Number of constraints: ${constraints.length}');
+
+    final cellSize =
+        size.width / 9; // This is correct - canvas is already the grid size
+    final dotRadius = cellSize * 0.12;
+
+    print('🎨 Cell size: $cellSize, Dot radius: $dotRadius');
+
+    for (var constraint in constraints) {
+      if (constraint.type != ConstraintType.KROPKI_WHITE &&
+          constraint.type != ConstraintType.KROPKI_BLACK) {
+        continue;
+      }
+
+      final dotColor = constraint.type == ConstraintType.KROPKI_WHITE
+          ? Colors.white
+          : Colors.black;
+
+      Offset dotCenter;
+
+      if (constraint.orientation == 'horizontal') {
+        // Dot between col1 and col2 at row1
+        // Position: right edge of col1 cell = (col1 + 1) * cellSize
+        final x = (constraint.col1 + 1) * cellSize; // 🔥 FIX
+        final y = constraint.row1 * cellSize + cellSize / 2;
+        dotCenter = Offset(x, y);
+        print(
+            '🎨 H-dot: row=${constraint.row1}, cols ${constraint.col1}-${constraint.col2} → $dotCenter');
+      } else {
+        // Dot between row1 and row2 at col1
+        // Position: bottom edge of row1 cell = (row1 + 1) * cellSize
+        final x = constraint.col1 * cellSize + cellSize / 2;
+        final y = (constraint.row1 + 1) * cellSize; // 🔥 FIX
+        dotCenter = Offset(x, y);
+        print(
+            '🎨 V-dot: col=${constraint.col1}, rows ${constraint.row1}-${constraint.row2} → $dotCenter');
+      }
+
+      final paint = Paint()
+        ..color = dotColor
+        ..style = PaintingStyle.fill;
+
+      if (constraint.type == ConstraintType.KROPKI_WHITE) {
+        final borderPaint = Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        canvas.drawCircle(dotCenter, dotRadius, borderPaint);
+      }
+
+      canvas.drawCircle(dotCenter, dotRadius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(KropkiDotsPainter oldDelegate) {
+    return false;
   }
 }
