@@ -1,299 +1,721 @@
 // =============================================================================
-// COMPREHENSIVE SUDOKU APP ARCHITECTURE (CURRENT STATE)
+// SUDOKU REALMS - COMPLETE APPLICATION ARCHITECTURE
 // =============================================================================
 
 /*
-SCOPE: This document describes the complete, functional Sudoku app implementation.
-The app is fully operational with advanced features including drag selection,
-automatic note erasing, and comprehensive undo/redo with action grouping.
+WHAT YOU'RE BUILDING:
+A professional Flutter Sudoku game called "Sudoku Realms" featuring:
+- Multiple themed puzzle realms (Classic Kingdom, Kropki Forest, etc.)
+- Variant Sudoku puzzles with visual constraints (Kropki dots system)
+- Advanced gameplay: drag selection, auto note-erasing, coloring modes
+- Complete progression system with save/load, completion tracking, best times
+- Realm-specific theming and visual design
+- Professional UI with castle-themed backgrounds and custom fonts
 
 =============================================================================
-PROJECT STRUCTURE
+APPLICATION ENTRY & NAVIGATION
 =============================================================================
 
-ACTIVE IMPLEMENTATION (lib/):
-- lib/main.dart                    → App entry point
-- lib/data/puzzles.dart            → Static puzzle definitions (4 puzzles)
-- lib/services/save_service.dart   → Persistence via SharedPreferences
-- lib/models/
-    • position.dart                → Grid coordinates (immutable)
-    • action.dart                  → Undo/redo action records with grouping
-    • sudoku_cell.dart             → Cell state with JSON serialization
-    • game_state.dart              → Complete game state with factory
-    • variant_constraint.dart      → Variant constraint system (unused)
-- lib/controllers/
-    • game_controller.dart         → Business logic (ChangeNotifier)
-- lib/widgets/
-    • menu_screen.dart             → Start screen
-    • game_screen.dart             → Main game screen with timer
-    • game_header.dart             → Header with timer, stars, controls
-    • sudoku_grid.dart             → Interactive 9x9 grid with drag selection
-    • number_pad.dart              → Input pad with modes and actions
-    • rules_popup.dart             → Help dialog
+main.dart - Application Bootstrap
+├── SudokuRealmsApp (MaterialApp)
+│   ├── Theme: Primary(0xFF6D9DC5), Secondary(0xFFB4975A)
+│   ├── Home: MainMenuScreen()
+│   └── Routes:
+│       ├── '/realm-selection' → RealmSelectionScreen()
+│       ├── '/level-selection' → LevelSelectionScreen(realmName, puzzles)
+│       └── '/game' → GameScreen(puzzleId, difficulty, realmName)
 
-INACTIVE FOLDERS (placeholders):
-- managers/, models/, screens/, widgets/ (outside lib/) → Empty stub files
-- utils/ → Empty stub files
+FUNCTION RESPONSIBILITIES:
+- main(): Initializes Flutter app with runApp()
+- SudokuRealmsApp.build(): Sets up MaterialApp with theme, routes, home screen
+
+NAVIGATION FLOW:
+MainMenu → RealmSelection → LevelSelection → GameScreen
+Each screen passes data to the next via route arguments
 
 =============================================================================
-CORE DATA MODELS (lib/models/)
+SCREEN ARCHITECTURE & RESPONSIBILITIES
+=============================================================================
+
+1) MAIN MENU SCREEN (main_menu_screen.dart)
+   PURPOSE: App entry point with themed castle background
+   
+   MainMenuScreen Class:
+   - backgroundDimness: Controls overlay opacity (0.4)
+   - build(): Creates layered UI with background image + dimming + content
+   - Uses CinzelDecorative font for "Sudoku Realms" title
+   - Navigation buttons: Play, Statistics, Tips & Tricks, Settings
+   
+   MenuButton Widget:
+   - Hover animations with color transitions
+   - Gold borders (0xFFB4975A) with glow effects on hover
+   - Primary color (0xFF6D9DC5) background on hover
+   - onPressed(): Navigates to respective screens
+
+2) REALM SELECTION SCREEN (menu_screen.dart)
+   PURPOSE: Choose themed puzzle realm
+   
+   RealmSelectionScreen Class:
+   - selectedRealmIndex: Tracks current selection (int)
+   - realms: List of 6 realm definitions with names and image paths
+   - build(): Grid layout with castle background and realm cards
+   
+   RealmCard Widget:
+   - Hover/selection glow effects with gold borders
+   - Background images for each realm theme
+   - onTap(): Updates selection and navigates to level selection
+   - Passes realmName and puzzles to next screen
+
+3) LEVEL SELECTION SCREEN (level_selection_screen.dart)
+   PURPOSE: Choose specific puzzle within selected realm
+   
+   LevelSelectionScreenState Class:
+   - expandedPuzzleIndex: Tracks which puzzle is expanded (int?)
+   - savedGames: Map<String, GameState?> - cached save data
+   - bestTimes: Map<String, int?> - cached best completion times
+   - puzzleList: Casts dynamic puzzles to List<PuzzleData>
+   
+   Key Methods:
+   - _loadSavedGames(): Loads progress for all puzzles in realm
+   - _buildPuzzleGrid(): Creates 4-column responsive grid
+   - _buildExpandedGrid(): Shows detailed puzzle preview with mini grid
+   - _calculateProgress(): Computes completion percentage (0.0-1.0)
+   - _togglePuzzle(): Expands/collapses puzzle details
+   - _buildSudokuGrid(): Mini 9x9 preview of puzzle state
+   - _formatTime(): Converts seconds to MM:SS format
+
+4) GAME SCREEN (game_screen.dart)
+   PURPOSE: Main gameplay interface with timer and controls
+   
+   GameScreenState Class:
+   - controller: GameController instance (late)
+   - theme: RealmTheme for visual styling (late)
+   - _timer: Timer for elapsed time updates
+   - _timerNotifier: ValueNotifier<Duration> for efficient updates
+   
+   Lifecycle Methods:
+   - initState(): Creates controller, theme, loads saved game, starts timer
+   - _loadSavedGame(): Restores previous progress via controller
+   - _startTimer(): 1-second periodic timer for elapsed time
+   - dispose(): Saves progress, cancels timer, cleans up resources
+   
+   UI Structure:
+   - GameHeader (with ValueListenableBuilder for timer)
+   - SudokuGrid (with RepaintBoundary for performance)
+   - NumberPad (input controls)
+
+=============================================================================
+CORE DATA MODELS & STRUCTURES
 =============================================================================
 
 1) POSITION (position.dart)
-   - Immutable value object: row, col coordinates
-   - Equality/hashCode, toString()
-   - JSON serialization: toJson(), fromJson()
+   PURPOSE: Immutable grid coordinate representation
+   
+   Properties:
+   - int row: Row index (0-8)
+   - int col: Column index (0-8)
+   
+   Methods:
+   - Position(row, col): Constructor
+   - operator ==(): Coordinate equality for Set/Map usage
+   - hashCode: Enables efficient Set/Map operations
+   - toString(): Debug representation "Position(row, col)"
+   - toJson(): Serialization {"row": row, "col": col}
+   - fromJson(): Deserialization from Map<String, dynamic>
 
-2) ACTION (action.dart)
-   - enum ActionType: SET_NUMBER, CLEAR, TOGGLE_SIDE_NOTE, TOGGLE_CENTER_NOTE, 
-     SET_COLOR, GROUP, ERASE_NOTE
-   - class Action: type, position, oldCell, newCell, timestamp, groupId
-   - Supports action grouping for atomic undo/redo operations
-   - JSON serialization: toJson(), fromJson()
+2) SUDOKU CELL (sudoku_cell.dart)
+   PURPOSE: Individual cell state with all properties and behaviors
+   
+   Core Properties:
+   - int row, col: Immutable position coordinates
+   - int? number: Main number (1-9 or null for empty)
+   - Set<int> sideNotes: Corner pencil marks (1-9)
+   - Set<int> centerNotes: Center pencil marks (1-9)
+   - Color? cellColor: Background color for organization
+   - bool isGiven: Original puzzle number (immutable)
+   - bool isSelected: Dark blue selection state
+   - bool isHighlighted: Light blue highlight state
+   - bool isError: Red border for conflicts
+   
+   Constructors:
+   - SudokuCell(): Default with all parameters
+   - SudokuCell.given(): For original puzzle numbers
+   - SudokuCell.empty(): For blank cells
+   
+   State Management:
+   - copyWith(): Immutable updates with clearNumber/clearColor flags
+   - clear(): Removes all user input (preserves given numbers)
+   - toggleSideNote(int): Adds/removes corner note
+   - toggleCenterNote(int): Adds/removes center note
+   - setNumber(int?): Sets main number, clears notes
+   - setColor(Color?): Sets background color
+   
+   Computed Properties:
+   - isEmpty: No content whatsoever
+   - hasUserInput: Has user-entered content
+   - sortedSideNotes/sortedCenterNotes: Ordered note lists
+   
+   Serialization:
+   - toJson(): Complete state to Map (excludes visual flags)
+   - fromJson(): Restoration from Map
 
-3) SUDOKU_CELL (sudoku_cell.dart)
-   - Core cell data: row, col, number, sideNotes(Set<int>), centerNotes(Set<int>)
-   - Visual state: cellColor(Color?), isSelected, isHighlighted, isError, isGiven
-   - Constructors: default, given({row,col,number}), empty({row,col})
-   - copyWith() with clearNumber/clearColor flags for precise state updates
-   - Mutators: clear(), toggleSideNote(), toggleCenterNote(), setNumber(), setColor()
-   - Computed properties: isEmpty, hasUserInput, sortedSideNotes, sortedCenterNotes
-   - JSON serialization: toJson(), fromJson()
+3) ACTION SYSTEM (action.dart)
+   PURPOSE: Comprehensive undo/redo with atomic operations
+   
+   ActionType Enum:
+   - SET_NUMBER: Place/remove main number
+   - CLEAR: Erase all cell content
+   - TOGGLE_SIDE_NOTE: Add/remove corner note
+   - TOGGLE_CENTER_NOTE: Add/remove center note
+   - SET_COLOR: Change cell background
+   - ERASE_NOTE: Auto-remove conflicting notes
+   - GROUP: Placeholder for grouped operations
+   
+   Action Class:
+   - type: ActionType - what operation was performed
+   - position: Position - which cell was affected
+   - oldCell: SudokuCell - state before change
+   - newCell: SudokuCell - state after change
+   - timestamp: DateTime - when action occurred
+   - groupId: String? - links related actions for atomic undo/redo
+   
+   ActionGroup Class:
+   - actions: List<Action> - related operations
+   - timestamp: DateTime - group creation time
+   - Enables atomic undo/redo of multi-cell operations
 
-4) GAME_STATE (game_state.dart)
-   - Enums: GameMode { NORMAL, SIDE_NOTES, CENTER_NOTES, COLORING }
-   - Enums: SelectionMode { SINGLE, MULTIPLE }
-   - Core state: grid (9x9 SudokuCell), currentMode, selectionMode
-   - Selection tracking: selectedCells(Set<Position>), highlightedCells(Set<Position>)
-   - Game metadata: difficulty, puzzleId, elapsedTime, isPaused
-   - History system: actionHistory(List<Action>), currentActionIndex
-   - Factory: newGame(puzzleId, difficulty) → builds grid from Puzzles
-   - JSON serialization: toJson() (includes actionHistory), fromJson()
+4) GAME STATE (game_state.dart)
+   PURPOSE: Complete game state management and persistence
+   
+   Enums:
+   - GameMode: NORMAL, SIDE_NOTES, CENTER_NOTES, COLORING
+   - SelectionMode: SINGLE, MULTIPLE
+   
+   Core State:
+   - grid: List<List<SudokuCell>> - 9x9 puzzle grid
+   - currentMode: GameMode - active input mode
+   - selectionMode: SelectionMode - single vs multi-cell selection
+   - selectedCells: Set<Position> - currently selected cells
+   - highlightedCells: Set<Position> - related cells to show
+   
+   Game Metadata:
+   - puzzleId: String - unique puzzle identifier
+   - difficulty: int - star rating (1-10)
+   - elapsedTime: Duration - total play time
+   - isPaused: bool - timer state
+   - isCompleted: bool - puzzle solved flag
+   
+   History System:
+   - actionHistory: List<Action> - complete undo/redo history
+   - currentActionIndex: int - position in history (-1 = no actions)
+   
+   Variant Support:
+   - constraints: List<VariantConstraint> - special puzzle rules
+   
+   Factory Methods:
+   - newGame(puzzleId, difficulty): Creates fresh game from puzzle data
+   - _createEmptyGrid(): Helper for 9x9 empty grid
+   
+   Key Methods:
+   - markCompleted(): Sets completion flag
+   - isGridComplete(): Checks if puzzle is solved (filled + no errors)
+   - elapsedSeconds: Getter for save service
+   - currentGrid: Getter for level selection preview
+   - toJson()/fromJson(): Complete state persistence
 
-5) VARIANT_CONSTRAINT (variant_constraint.dart) - UNUSED
-   - enum ConstraintType: KROPKI_WHITE, KROPKI_BLACK (with placeholders for future variants)
-   - class VariantConstraint: type, row1, col1, row2, col2
-   - Methods: isBetween(), involvesCell(), getOtherCell(), orientation
-   - JSON serialization: toJson(), fromJson()
-   - Note: This is a prepared system for future Sudoku variants but is not currently integrated
+5) VARIANT CONSTRAINTS (variant_constraint.dart)
+   PURPOSE: Special puzzle rules system (Kropki dots, future variants)
+   
+   ConstraintType Enum:
+   - KROPKI_WHITE: Adjacent cells differ by 1 (consecutive)
+   - KROPKI_BLACK: Adjacent cells in 2:1 ratio (double)
+   - Future: KILLER_CAGE, THERMO, ARROW, etc.
+   
+   VariantConstraint Class:
+   - type: ConstraintType - constraint category
+   - row1, col1, row2, col2: Two connected cells
+   
+   Utility Methods:
+   - isBetween(r1,c1,r2,c2): Checks if constraint applies to cell pair
+   - involvesCell(row,col): Checks if constraint affects specific cell
+   - getOtherCell(row,col): Returns partner cell in constraint
+   - orientation: 'horizontal' or 'vertical' getter
+   - toJson()/fromJson(): Persistence support
 
 =============================================================================
-BUSINESS LOGIC (lib/controllers/game_controller.dart)
+GAME CONTROLLER - CORE BUSINESS LOGIC ENGINE
 =============================================================================
 
-GAME_CONTROLLER extends ChangeNotifier:
-- State management: owns GameState instance, notifies listeners on changes
-- Persistence: saveProgress(), loadProgress() via SaveService
-- Cell selection: handleCellTap(row,col), toggleMultipleSelection()
-- Input processing: handleNumberInput(number) with mode-aware logic
-- History management: addAction(), addGroupedActions(), undo(), redo()
-- Grid operations: eraseSelectedCells(), restartPuzzle()
-- Validation: validateGrid() (marks conflicts), getRelatedCells(), updateHighlights()
-- Timer control: startTimer(), pauseTimer()
-- Queries: getSelectedNumber(), countNumber(), isNumberComplete()
+game_controller.dart - Central Game Logic (extends ChangeNotifier)
+PURPOSE: Manages all game state changes, user interactions, and business rules
 
-ADVANCED FEATURES:
-- Automatic note erasing: eraseNotesInRelatedCells() removes conflicting notes
-- Action grouping: multi-cell operations are atomic for undo/redo
-- Smart input handling: mode-aware number input with conflict detection
+CORE RESPONSIBILITIES:
+
+CELL SELECTION SYSTEM:
+- handleCellTap(row, col):
+  * Single mode: Select one cell, clear others
+  * Multiple mode: Add/remove from selection
+  * Updates gameState.selectedCells Set<Position>
+  * Calls updateHighlights() and notifyListeners()
+
+DRAG SELECTION SYSTEM:
+- Continuous multi-cell selection by dragging
+- Position calculation with padding adjustments  
+- Prevents tap events after drag operations
+- Visual feedback during drag operation
+
+NUMBER INPUT PROCESSING:
+- handleNumberInput(number):
+  * NORMAL mode: Sets main number, clears notes
+  * SIDE_NOTES mode: Toggles corner pencil marks
+  * CENTER_NOTES mode: Toggles center pencil marks
+  * COLORING mode: Sets cell background color
+  * Creates Action objects for undo/redo
+  * Calls eraseNotesInRelatedCells() for main numbers
+  * Groups related actions for atomic operations
+
+AUTO NOTE ERASING ALGORITHM:
+- eraseNotesInRelatedCells(position, number):
+  * Finds all cells in same row, column, and 3x3 box
+  * Removes conflicting number from their side and center notes
+  * Creates ERASE_NOTE actions for undo support
+  * Groups with main SET_NUMBER action using shared groupId
+  * Returns List<Action> for grouped operations
+
+CELL ERASURE:
+- eraseSelectedCells():
+  * Clears all user input from selected cells
+  * Preserves original puzzle numbers (isGiven = true)
+  * Creates CLEAR actions for undo support
+  * Handles single or multiple cells efficiently
+
+VALIDATION SYSTEM:
+- validateGrid():
+  * Checks each filled cell for conflicts
+  * Row validation: No duplicate numbers 1-9
+  * Column validation: No duplicate numbers 1-9
+  * Box validation: No duplicates in 3x3 sections
+  * Sets isError flag on conflicting cells
+  * Real-time feedback on every change
+  * Prints debug information for conflicts
+
+HIGHLIGHTING SYSTEM:
+- updateHighlights():
+  * Single selection: Highlights row + column + box (related cells)
+  * Multiple selection: Highlights intersection of all selected cells' related cells
+  * Updates isSelected and isHighlighted flags on all cells
+  * Provides visual feedback for valid move locations
+- getRelatedCells(position): Returns Set<Position> of row+column+box
+
+UNDO/REDO SYSTEM:
+- addAction(action): Adds single action to history, removes redo history
+- addGroupedActions(actions): Adds related actions with shared groupId
+- undo(): Restores previous state, handles action groups atomically
+- redo(): Reapplies undone actions, handles action groups atomically
+- canUndo()/canRedo(): Checks if operations are available
+
+MODE MANAGEMENT:
+- changeMode(GameMode): Switches input mode, notifies listeners
+- toggleMultipleSelection(): Toggles between single/multi selection
+
+UTILITY FUNCTIONS:
+- getSelectedNumber(): Returns number in selected cell (single selection only)
+- countNumber(number): How many times number appears in grid
+- isNumberComplete(number): True if number appears 9 times
+- restartPuzzle(): Resets to initial state, clears history
+
+PERSISTENCE:
+- saveProgress(): Stores current state via SaveService
+- loadProgress(): Restores saved state, updates highlights
 
 =============================================================================
-SERVICES (lib/services/save_service.dart)
+SAVE SERVICE - PERSISTENCE LAYER
 =============================================================================
 
-SAVE_SERVICE (static methods):
-- Storage: SharedPreferences key-value store
-- Key format: 'sudoku_game_<puzzleId>' + '<key>_timestamp'
-- Operations: saveGame(GameState), loadGame(puzzleId), clearSave(puzzleId)
-- Utilities: getSavedGameIds(), getSaveTimestamp(puzzleId)
-- Serialization: JSON via GameState.toJson()/fromJson()
+save_service.dart - Data Persistence Management (static methods)
+PURPOSE: Handles all save/load operations using SharedPreferences
+
+KEY PREFIXES:
+- _keyPrefix: 'sudoku_game_' - main save data
+- _completedPrefix: 'sudoku_completed_' - completion flags
+- _bestTimePrefix: 'sudoku_best_time_' - fastest completion times
+
+GAME STATE PERSISTENCE:
+- saveGame(GameState):
+  * Converts GameState to JSON via toJson()
+  * Stores in SharedPreferences with puzzle ID key
+  * Updates completion status and best times
+  * Saves timestamp for last save
+  * Prints confirmation with completion status
+
+- loadGame(puzzleId):
+  * Retrieves JSON from SharedPreferences
+  * Converts back to GameState via fromJson()
+  * Returns null if no save exists
+  * Handles parsing errors gracefully
+
+COMPLETION TRACKING:
+- isCompleted(puzzleId): Checks if puzzle is solved
+- getBestTime(puzzleId): Returns fastest completion time in seconds
+- getCompletedPuzzleIds(): Lists all solved puzzle IDs
+
+STATISTICS & ANALYTICS:
+- getRealmStats(puzzleIds):
+  * Counts completed vs total puzzles
+  * Calculates completion percentage
+  * Returns Map with 'completed', 'total', 'percentage'
+  * Used for realm progress bars
+
+CLEANUP OPERATIONS:
+- clearSave(puzzleId): Removes saved game (keeps best time)
+- getSavedGameIds(): Lists all puzzles with saves
+- getSaveTimestamp(puzzleId): When game was last saved
 
 =============================================================================
-STATIC DATA (lib/data/puzzles.dart)
+PUZZLE DATA SYSTEM
 =============================================================================
 
-PUZZLE_DATA:
-- Structure: id, difficulty, grid (0=empty, 1-9=given numbers)
-- Predefined puzzles: easy1, easy2 (difficulty 3), medium1 (difficulty 5), hard1 (difficulty 8)
-- API: getPuzzle(id), getAllPuzzleIds()
+1) PUZZLE DEFINITIONS (data/puzzles.dart)
+   PURPOSE: Static puzzle data with constraint definitions
+   
+   PuzzleData Class:
+   - id: String - unique identifier (e.g., 'kropki_01', 'classic_01')
+   - difficulty: int - star rating (1-10)
+   - grid: List<List<int>> - 9x9 array (0=empty, 1-9=given numbers)
+   - constraints: List<VariantConstraint> - special rules (default empty)
+   
+   Static Puzzle Collections:
+   - 7 Kropki puzzles (kropki1-kropki7) with full constraint definitions
+   - 24 Classic puzzles (classic1-classic24) - standard Sudoku
+   - allPuzzles: Map<String, PuzzleData> for lookup by ID
+   
+   Utility Methods:
+   - getPuzzle(id): Retrieves specific puzzle by ID
+   - getAllPuzzleIds(): Lists all available puzzle IDs
+
+2) REALM CONFIGURATION (data/realm_config.dart)
+   PURPOSE: Organizes puzzles into themed realms with visual styling
+   
+   RealmConfig Class:
+   - realmPuzzles: Map<String, List<PuzzleData>> - puzzle organization
+     * 'Classic Kingdom': 24 classic puzzles
+     * 'Kropki Forest': 7 Kropki puzzles
+   - realmBackgrounds: Map<String, String> - background image paths
+   - realmColors: Map<String, Map<String, dynamic>> - color schemes
+   
+   Methods:
+   - getPuzzlesForRealm(name): Returns List<PuzzleData> for realm
+   - getBackgroundForRealm(name): Returns background image path
+   - getPrimaryColor(name): Returns Color for realm theme
+   - getAccentColor(name): Returns Color for realm accent
+
+3) REALM THEMING (utils/realm_theme.dart)
+   PURPOSE: Realm-specific visual styling system
+   
+   RealmTheme Class:
+   - realmName: String - realm identifier
+   - primaryColor: Color - main accent (gold for Classic)
+   - accentColor: Color - lighter accent
+   - backgroundColor: Color - cell backgrounds (black for all)
+   - textPrimary: Color - given numbers (realm color)
+   - textSecondary: Color - user numbers (lighter shade)
+   - borderColor: Color - grid borders (realm color)
+   - selectedColor: Color - selected cells (realm with opacity)
+   - highlightedColor: Color - highlighted cells (realm with opacity)
+   - sameNumberColor: Color - same number highlight (realm with opacity)
+   
+   Factory:
+   - fromRealm(realmName): Creates theme from RealmConfig colors
 
 =============================================================================
-UI LAYER (lib/widgets/)
+USER INTERFACE COMPONENTS
 =============================================================================
 
-MENU_SCREEN (menu_screen.dart):
-- Simple start screen with title and START GAME button
-- Navigation: pushes GameScreen(puzzleId: 'easy_001', difficulty: 3)
+1) GAME HEADER (game_header.dart)
+   PURPOSE: Top bar with game info and controls
+   
+   GameHeader Widget:
+   - theme: RealmTheme for styling
+   - difficulty: int for star rating
+   - puzzleId: String for title
+   - elapsedTime: Duration for timer
+   - onRestart/onExit: VoidCallback functions
+   
+   UI Components:
+   - buildExitButton(): Back navigation with IconButton
+   - buildRestartButton(): Reset puzzle with IconButton
+   - buildTimer(): Elapsed time display in MM:SS format
+   - buildStarRating(): Difficulty visualization with star icons
+   - buildTitle(): Puzzle ID display with styling
+   - _formatDuration(): Time formatting helper
 
-GAME_SCREEN (game_screen.dart):
-- Stateful widget managing GameController lifecycle
-- Timer management: Timer + ValueNotifier<Duration> for efficient updates
-- Layout: GameHeader (ValueListenableBuilder) + SudokuGrid + NumberPad
-- Lifecycle: loads saved game, starts timer, persists on dispose
+2) SUDOKU GRID (sudoku_grid.dart)
+   PURPOSE: Interactive 9x9 puzzle grid with advanced features
+   
+   SudokuGridState Class:
+   - controller: GameController reference
+   - theme: RealmTheme for styling
+   - _isDragging: bool - drag state tracking
+   - _draggedCells: Set<Position> - cells in current drag
+   
+   Interaction Handling:
+   - onCellTap(row, col): Single cell selection
+   - onCellDragStart/Update/End(): Continuous drag selection
+   - Position calculation with padding adjustments
+   - Prevents tap events after drag operations
+   
+   Visual Rendering:
+   - buildCell(row, col, cell): Complete cell rendering with layers
+   - getCellBackgroundColor(): Priority-based color system
+   - getCellBorder(): 3x3 section borders with selection/error overlays
+   - _buildCellContent(): Main number OR notes rendering
+   
+   Cell Content Rendering:
+   - buildMainNumber(): Large center number with color coding
+   - buildSideNotes(): Corner pencil marks with dynamic layout
+   - buildCenterNotes(): Center pencil marks with dynamic font sizing
+   - Dynamic font sizing based on note count (6-13px)
+   
+   KropkiDotsPainter Class:
+   - paint(): Renders constraint dots between cells
+   - White dots: Consecutive numbers (differ by 1)
+   - Black dots: Ratio numbers (2:1 relationship)
+   - Calculates dot positions based on cell coordinates
+   - shouldRepaint(): Returns false for performance
 
-GAME_HEADER (game_header.dart):
-- Display: puzzle title, difficulty stars (0..difficulty), formatted timer
-- Controls: exit button (Navigator.pop), restart button (controller.restartPuzzle())
-- Timer formatting: MM:SS format
+3) NUMBER PAD (number_pad.dart)
+   PURPOSE: Input controls and mode switching interface
+   
+   NumberPadState Class:
+   - controller: GameController reference
+   - theme: RealmTheme for styling
+   - Listener management for controller changes
+   
+   Layout Structure (3 rows):
+   Row 1: [Color] [Undo] [1] [2] [3] [Pencil]
+   Row 2: [Multi] [Redo] [4] [5] [6] [Side]
+   Row 3: [Help]  [Erase][7] [8] [9] [Center]
+   
+   Button Types:
+   - buildNumberButton(): Number input with completion indicators
+   - buildModeButton(): Input mode selection with active highlighting
+   - buildActionButton(): Utility functions with enable/disable states
+   - buildMultiButton(): Selection mode toggle with visual feedback
+   
+   Visual Feedback:
+   - Active mode highlighting (black background, white text)
+   - Disabled state for unavailable actions (grey)
+   - Color preview in coloring mode (shows actual colors)
+   - Completion indicators (grey out numbers appearing 9 times)
+   - _getColorForNumber(): Maps numbers 1-9 to specific colors
 
-SUDOKU_GRID (sudoku_grid.dart):
-- GridView.builder rendering 81 cells
-- Visual layering: background → borders → colored borders → error borders → content
-- Content rendering: main number OR side notes OR center notes (stacked when both)
-- Gesture handling: tap selection, drag selection with continuous tracking
-- Drag selection: onCellDragStart/Update/End with position calculation
-- Styling: getCellBorder(), getCellBackgroundColor() with priority system
-
-NUMBER_PAD (number_pad.dart):
-- Three-row layout: modes + undo + 1-3, multi + redo + 4-6, help + erase + 7-9 + center
-- Mode buttons: NORMAL, SIDE_NOTES, CENTER_NOTES, COLORING with visual feedback
-- Action buttons: undo/redo (enabled based on history), erase, help
-- Multi-selection toggle with visual state indication
-- Color mode: number buttons show colors instead of numbers
-- Controller integration: delegates all actions to GameController
-
-RULES_POPUP (rules_popup.dart):
-- AlertDialog with comprehensive Sudoku rules and gameplay tips
-- Static show(context) method for easy invocation
+4) RULES POPUP (rules_popup.dart)
+   PURPOSE: Help dialog with comprehensive game instructions
+   
+   RulesPopup Widget:
+   - show(): Static method to display modal dialog
+   - buildRulesContent(): Formatted rule sections
+   - _buildRuleSection(): Individual rule formatting with title/content
+   
+   Content Sections:
+   - Objective: Fill 9x9 grid with numbers 1-9
+   - Rules: Row/column/box constraints
+   - How to Play: Mode explanations and controls
+   - Tips: Strategy hints and UI features
 
 =============================================================================
 DATA FLOW ARCHITECTURE
 =============================================================================
 
-USER INTERACTION FLOW:
-User Input → UI Widget → GameController → GameState Mutation → notifyListeners() → UI Rebuild
+USER INPUT FLOW:
+1. User taps cell → SudokuGrid.onCellTap()
+2. Calls GameController.handleCellTap()
+3. Updates GameState.selectedCells
+4. Calls updateHighlights() → marks related cells
+5. Calls notifyListeners() → triggers UI rebuild
 
-SPECIFIC FLOWS:
-- Cell selection: SudokuGrid → handleCellTap() → updateHighlights() → UI update
-- Number input: NumberPad → handleNumberInput() → mode-aware processing → action creation → history update
-- Drag selection: SudokuGrid → onCellDragUpdate() → position calculation → selection update
-- Timer updates: GameScreen Timer → ValueNotifier → GameHeader rebuild
-- Persistence: GameState ↔ SaveService ↔ SharedPreferences (JSON)
+NUMBER INPUT FLOW:
+1. User taps number → NumberPad button
+2. Calls GameController.handleNumberInput()
+3. Processes based on currentMode:
+   - NORMAL: Sets main number, clears notes
+   - SIDE_NOTES: Toggles corner notes
+   - CENTER_NOTES: Toggles center notes
+   - COLORING: Sets background color
+4. Creates Action for undo/redo
+5. If main number: calls eraseNotesInRelatedCells()
+6. Calls validateGrid() → checks conflicts
+7. Calls notifyListeners() → UI updates
+
+UNDO/REDO FLOW:
+1. Action created with oldCell/newCell states
+2. Added to actionHistory with optional groupId
+3. Undo: Restore oldCell states, decrement index
+4. Redo: Restore newCell states, increment index
+5. Group actions: Process entire group atomically
+
+PERSISTENCE FLOW:
+1. GameState → toJson() → JSON string
+2. SaveService.saveGame() → SharedPreferences
+3. Load: JSON string → fromJson() → GameState
+4. Completion tracking and best times updated
+
+VALIDATION FLOW:
+1. Every number change triggers validateGrid()
+2. Check cell against row, column, 3x3 box
+3. Mark conflicts with isError flag
+4. UI shows red borders for invalid cells
 
 =============================================================================
-ADVANCED FEATURES
+ADVANCED FEATURES & ALGORITHMS
 =============================================================================
 
-DRAG SELECTION:
-- Continuous drag tracking across multiple cells
-- Position calculation accounting for padding and cell size
+DRAG SELECTION ALGORITHM:
+- Continuous multi-cell selection by dragging
+- Position calculation: (touch - padding) / cellSize
 - Prevents tap events after drag operations
-- Visual feedback during drag operations
+- Visual feedback during drag operation
+- Efficient Set operations for cell tracking
 
-AUTOMATIC NOTE ERASING:
-- When placing a number, automatically removes that number from notes in related cells
+AUTO NOTE ERASING ALGORITHM:
+- When placing number, removes conflicting notes
+- Affects all cells in same row, column, 3x3 box
 - Creates grouped actions for atomic undo/redo
-- Prevents conflicting notes from remaining in the grid
+- Maintains note consistency automatically
+- Prevents invalid note states
 
-ACTION GROUPING:
-- Multi-cell operations are grouped with shared groupId
-- Undo/redo treats grouped actions atomically
-- Prevents partial undo states
+ACTION GROUPING SYSTEM:
+- Related actions share same groupId (timestamp-based)
+- Undo/redo processes entire group atomically
+- Examples: Number placement + note erasing
+- Prevents partial state inconsistencies
+- Maintains action history integrity
 
-SMART VALIDATION:
-- Real-time conflict detection across rows, columns, and 3x3 boxes
-- Visual error indication with red borders
-- Maintains game state integrity
+VARIANT CONSTRAINT RENDERING:
+- Kropki dots between cells with special rules
+- White dots: Adjacent numbers differ by 1
+- Black dots: Adjacent numbers in 2:1 ratio
+- Custom painter renders dots over grid
+- Extensible system for future constraint types
 
-=============================================================================
-KEY DESIGN PATTERNS
-=============================================================================
+VISUAL FEEDBACK SYSTEM:
+- Real-time error highlighting (red borders)
+- Selection highlighting (blue backgrounds)
+- Related cell highlighting (light blue)
+- Completion indicators (grey numbers)
+- Color coding for organization
+- Realm-specific theming
 
-OBSERVER PATTERN:
-- GameController extends ChangeNotifier
-- UI widgets listen to controller changes
-- Automatic UI updates on state changes
-
-COMMAND PATTERN:
-- Action class encapsulates user operations
-- Undo/redo system with action history
-- Grouped actions for complex operations
-
-FACTORY PATTERN:
-- GameState.newGame() creates initial state
-- SudokuCell constructors for different cell types
-
-STRATEGY PATTERN:
-- GameMode enum for different input behaviors
-- Mode-aware input processing in controller
-
-=============================================================================
-EXTENSION POINTS
-=============================================================================
-
-ADDING PUZZLES:
-- Extend lib/data/puzzles.dart with new PuzzleData
-- Update allPuzzles map
-- No other changes required
-
-ADDING GAME MODES:
-- Extend GameMode enum
-- Add mode logic to handleNumberInput()
-- Update NumberPad UI to reflect new mode
-
-IMPROVING DRAG SELECTION:
-- Current implementation supports basic drag selection
-- Could be enhanced with visual drag indicators
-- Multi-touch support could be added
-
-ALTERNATIVE PERSISTENCE:
-- Replace SaveService with new implementation
-- Maintain same method signatures
-- Could support cloud sync, multiple saves, etc.
-
-VARIANT CONSTRAINTS:
-- The VariantConstraint system is already prepared but unused
-- To integrate: add constraints to GameState, update validation logic
-- Add constraint rendering to SudokuGrid
-- Implement constraint-specific validation rules
+PERFORMANCE OPTIMIZATIONS:
+- RepaintBoundary around grid for isolated repaints
+- ValueListenableBuilder for timer (prevents full rebuilds)
+- Efficient Set operations for selections
+- Minimal notifyListeners() calls
+- Lazy loading of saved games
+- Cached puzzle data
 
 =============================================================================
-PERFORMANCE CONSIDERATIONS
+TECHNICAL SPECIFICATIONS
 =============================================================================
 
-EFFICIENT RENDERING:
-- GridView.builder for lazy cell rendering
-- ValueListenableBuilder for timer updates only
-- Minimal setState() calls
+DEPENDENCIES (pubspec.yaml):
+- Flutter SDK: >=3.0.0 <4.0.0
+- provider: ^6.0.0 (not currently used, but available)
+- shared_preferences: ^2.2.0 (persistence)
 
-MEMORY MANAGEMENT:
-- Proper controller disposal
-- Timer cleanup on widget disposal
-- Efficient action history management
+ASSETS:
+- Custom font: CinzelDecorative (Bold weight)
+- Background images: castle_background.png, castle.jpg
+- Realm images: images/realms/ directory
 
-STATE UPDATES:
-- Immutable GameState prevents unnecessary rebuilds
-- ChangeNotifier only notifies on actual changes
-- Selective UI updates using ValueListenableBuilder
+PROJECT STRUCTURE:
+- lib/ - Main application code
+- fonts/ - Custom font files
+- images/ - Background and realm images
+- Platform folders: android/, ios/, web/, windows/, linux/, macos/
+
+EXTERNAL DIRECTORIES (unused at runtime):
+- controllers/, data/, managers/, models/, screens/, services/, utils/, widgets/
+- These contain placeholder files but are not used by the application
 
 =============================================================================
-CURRENT LIMITATIONS & FUTURE ENHANCEMENTS
+EXTENSION POINTS & FUTURE ENHANCEMENTS
 =============================================================================
 
-CURRENT LIMITATIONS:
-- Fixed puzzle set (4 puzzles)
-- No puzzle generation
-- No statistics tracking
-- No achievement system
+NEW CONSTRAINT TYPES:
+1. Add to ConstraintType enum in variant_constraint.dart
+2. Update KropkiDotsPainter for visual rendering
+3. Add validation logic in GameController
+4. Define constraint rules in puzzle data
+5. Examples: KILLER_CAGE, THERMO, ARROW, SANDWICH
 
-POTENTIAL ENHANCEMENTS:
-- Puzzle generation algorithms
-- Multiple difficulty levels
-- Statistics and progress tracking
-- Achievement system
-- Multiplayer support
-- Custom themes
+NEW GAME MODES:
+1. Add to GameMode enum in game_state.dart
+2. Handle in GameController.handleNumberInput() switch
+3. Update NumberPad mode buttons and layout
+4. Add visual feedback if needed
+5. Examples: KILLER_MODE, ARROW_MODE
+
+NEW PUZZLE TYPES:
+1. Create PuzzleData with appropriate constraints
+2. Add to RealmConfig puzzle collections
+3. Update constraint rendering systems
+4. Implement validation rules
+5. Add realm-specific theming
+
+CLOUD PERSISTENCE:
+1. Replace SaveService implementation
+2. Maintain same method signatures
+3. Add sync conflict resolution
+4. Handle offline/online states
+5. User account management
+
+HINT SYSTEM:
+1. Add hint generation algorithms
+2. Integrate with GameController
+3. Add UI controls to NumberPad
+4. Track hint usage in statistics
+5. Different hint types (naked singles, hidden pairs, etc.)
+
+STATISTICS & ACHIEVEMENTS:
+1. Expand SaveService with detailed tracking
+2. Add statistics screen to main menu
+3. Achievement system with unlockables
+4. Progress tracking across realms
+5. Time-based challenges
+
+=============================================================================
+CURRENT STATE SUMMARY
+=============================================================================
+
+FULLY IMPLEMENTED & FUNCTIONAL:
+✅ Complete Sudoku gameplay with all standard features
+✅ Multiple themed realms with progression system
+✅ Advanced input modes (normal, side notes, center notes, coloring)
+✅ Drag selection and multi-cell operations
+✅ Comprehensive undo/redo with action grouping
+✅ Auto note erasing when placing numbers
+✅ Real-time validation and error highlighting
+✅ Complete persistence with save/load/best times
+✅ Kropki dot constraint system with visual rendering
+✅ Professional UI with realm-specific theming
+✅ Timer system with efficient updates
+✅ Completion tracking and statistics
+✅ Custom fonts and themed backgrounds
+✅ 31 total puzzles (7 Kropki + 24 Classic)
+
+READY FOR INTEGRATION:
+- Additional constraint types (Thermo, Arrow, Killer, Sandwich)
+- Hint system with solving algorithms
+- Achievement and detailed statistics system
+- Cloud synchronization and user accounts
+- Multiplayer features and competitions
+- Puzzle editor and community sharing
 - Accessibility improvements
+- Additional realms and puzzle packs
 
-=============================================================================
-NOTE ON PROJECT STRUCTURE
-=============================================================================
+This architecture provides a solid foundation for a professional Sudoku game
+with extensive room for future enhancements while maintaining clean separation
+of concerns, efficient performance, and excellent user experience.
 
-The app follows a clean, single-source architecture where lib/ contains all
-functional code. External folders (managers/, models/, screens/, widgets/,
-utils/) exist but contain only empty stub files and are not used at runtime.
-This creates a focused, maintainable codebase with clear separation of concerns.
-
-The architecture supports easy extension while maintaining the current
-functionality and performance characteristics.
 */

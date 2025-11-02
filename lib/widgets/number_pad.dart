@@ -2,13 +2,18 @@
 import 'package:flutter/material.dart';
 import '../controllers/game_controller.dart';
 import '../models/game_state.dart';
+import '../utils/realm_theme.dart';
 
 class NumberPad extends StatefulWidget {
   final GameController controller;
+  final RealmTheme theme;
+  final VoidCallback? onShowRules;
 
   const NumberPad({
     super.key,
     required this.controller,
+    required this.theme,
+    this.onShowRules,
   });
 
   @override
@@ -19,20 +24,17 @@ class _NumberPadState extends State<NumberPad> {
   @override
   void initState() {
     super.initState();
-    // Listen to controller changes so widget rebuilds when mode changes
     widget.controller.addListener(_onControllerChanged);
     print('===== Listener added to controller =====');
   }
 
   @override
   void dispose() {
-    // Remove listener to prevent memory leaks
     widget.controller.removeListener(_onControllerChanged);
     super.dispose();
   }
 
   void _onControllerChanged() {
-    // This triggers a rebuild when controller notifies listeners
     setState(() {});
   }
 
@@ -158,7 +160,7 @@ class _NumberPadState extends State<NumberPad> {
         buildActionButton(
           label: 'Help',
           icon: Icons.help,
-          onPressed: () => _showRulesPopup(),
+          onPressed: () => widget.onShowRules?.call(), // 🔥 CHANGE THIS
           isEnabled: true,
         ),
         const SizedBox(width: 4),
@@ -198,6 +200,7 @@ class _NumberPadState extends State<NumberPad> {
     );
   }
 
+  // 🔥 NUMBER BUTTONS - Use realm colors with subtle styling
   Widget buildNumberButton({
     required int number,
     required GameMode currentMode,
@@ -212,8 +215,14 @@ class _NumberPadState extends State<NumberPad> {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.black, width: 1),
-            color: isColoringMode ? _getColorForNumber(number) : Colors.white,
+            border: Border.all(
+              color: widget.theme.accentColor, // 🔥 Realm accent color border
+              width: 1.5,
+            ),
+            color: isColoringMode
+                ? _getColorForNumber(number)
+                : Color(0xFF1a1a2e), // 🔥 Dark background for numbers
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Center(
             child: isColoringMode
@@ -221,9 +230,12 @@ class _NumberPadState extends State<NumberPad> {
                 : Text(
                     number.toString(),
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: isComplete ? Colors.grey : Colors.black,
+                      color: isComplete
+                          ? Colors.grey[600]
+                          : widget.theme
+                              .accentColor, // 🔥 Realm accent color for text
                     ),
                   ),
           ),
@@ -232,6 +244,7 @@ class _NumberPadState extends State<NumberPad> {
     );
   }
 
+  // 🔥 ACTION BUTTONS - Use realm colors
   Widget buildActionButton({
     required String label,
     required IconData icon,
@@ -244,8 +257,14 @@ class _NumberPadState extends State<NumberPad> {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.black, width: 1),
-            color: isEnabled ? Colors.grey[200] : Colors.grey[100],
+            border: Border.all(
+              color: isEnabled
+                  ? widget.theme.accentColor.withOpacity(0.5)
+                  : Colors.grey[700]!,
+              width: 1.5,
+            ),
+            color: Color(0xFF1a1a2e).withOpacity(0.6), // 🔥 Dark background
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -253,14 +272,19 @@ class _NumberPadState extends State<NumberPad> {
               Icon(
                 icon,
                 size: 16,
-                color: isEnabled ? Colors.black : Colors.grey,
+                color: isEnabled
+                    ? widget.theme.accentColor // 🔥 Realm color
+                    : Colors.grey[600],
               ),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: isEnabled ? Colors.black : Colors.grey,
+                  color: isEnabled
+                      ? widget.theme.accentColor
+                          .withOpacity(0.9) // 🔥 Realm color
+                      : Colors.grey[600],
                 ),
               ),
             ],
@@ -270,11 +294,12 @@ class _NumberPadState extends State<NumberPad> {
     );
   }
 
+  // 🔥 MULTI BUTTON - Gold/realm color when active
   Widget buildMultiButton({
     required String label,
     required IconData icon,
     required VoidCallback onPressed,
-    required bool isActive, // This will be based on SelectionMode
+    required bool isActive,
   }) {
     return Expanded(
       child: GestureDetector(
@@ -282,9 +307,25 @@ class _NumberPadState extends State<NumberPad> {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.black, width: 1),
-            color:
-                isActive ? Colors.black : Colors.grey[200], // Black when active
+            border: Border.all(
+              color: isActive
+                  ? widget.theme.primaryColor
+                  : widget.theme.accentColor.withOpacity(0.5),
+              width: isActive ? 2.0 : 1.5,
+            ),
+            color: isActive
+                ? widget.theme.primaryColor // 🔥 Full realm color when active
+                : Color(0xFF1a1a2e).withOpacity(0.6),
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: widget.theme.primaryColor.withOpacity(0.4),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    )
+                  ]
+                : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -292,8 +333,7 @@ class _NumberPadState extends State<NumberPad> {
               Icon(
                 icon,
                 size: 16,
-                color:
-                    isActive ? Colors.white : Colors.black, // White when active
+                color: isActive ? Colors.black : widget.theme.accentColor,
               ),
               Text(
                 label,
@@ -301,8 +341,8 @@ class _NumberPadState extends State<NumberPad> {
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                   color: isActive
-                      ? Colors.white
-                      : Colors.black, // White when active
+                      ? Colors.black
+                      : widget.theme.accentColor.withOpacity(0.9),
                 ),
               ),
             ],
@@ -312,6 +352,7 @@ class _NumberPadState extends State<NumberPad> {
     );
   }
 
+  // 🔥 MODE BUTTONS - Gold/realm color when active
   Widget buildModeButton({
     required GameMode mode,
     required IconData icon,
@@ -326,8 +367,25 @@ class _NumberPadState extends State<NumberPad> {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.black, width: 1),
-            color: isActive ? Colors.black : Colors.grey[200],
+            border: Border.all(
+              color: isActive
+                  ? widget.theme.primaryColor
+                  : widget.theme.accentColor.withOpacity(0.5),
+              width: isActive ? 2.0 : 1.5,
+            ),
+            color: isActive
+                ? widget.theme.primaryColor // 🔥 Full realm color when active
+                : Color(0xFF1a1a2e).withOpacity(0.6),
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: widget.theme.primaryColor.withOpacity(0.4),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    )
+                  ]
+                : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -335,14 +393,16 @@ class _NumberPadState extends State<NumberPad> {
               Icon(
                 icon,
                 size: 16,
-                color: isActive ? Colors.white : Colors.black,
+                color: isActive ? Colors.black : widget.theme.accentColor,
               ),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: isActive ? Colors.white : Colors.black,
+                  color: isActive
+                      ? Colors.black
+                      : widget.theme.accentColor.withOpacity(0.9),
                 ),
               ),
             ],
@@ -350,13 +410,6 @@ class _NumberPadState extends State<NumberPad> {
         ),
       ),
     );
-  }
-
-  void _showRulesPopup() {
-    // TODo: Show popup dialog with Sudoku rules
-    // - Create AlertDialog with rules text
-    // - Show using showDialog()
-    // - Include large, visible text explaining Sudoku rules
   }
 
   Color _getColorForNumber(int number) {

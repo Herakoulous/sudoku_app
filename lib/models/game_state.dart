@@ -2,7 +2,7 @@
 import '../models/sudoku_cell.dart';
 import '../models/action.dart' as game_action;
 import '../models/position.dart';
-import '../models/variant_constraint.dart'; // 🔥 NEW IMPORT
+import '../models/variant_constraint.dart';
 import '../data/puzzles.dart';
 
 enum GameMode { NORMAL, SIDE_NOTES, CENTER_NOTES, COLORING }
@@ -26,12 +26,13 @@ class GameState {
   String puzzleId;
   Duration elapsedTime;
   bool isPaused;
+  bool isCompleted; // 🔥 NEW: Track if puzzle is completed
 
   // Undo/Redo system
   List<game_action.Action> actionHistory;
   int currentActionIndex;
 
-  // 🔥 NEW: Variant constraints
+  // Variant constraints
   List<VariantConstraint> constraints;
 
   GameState({
@@ -44,15 +45,25 @@ class GameState {
     Set<Position>? highlightedCells,
     this.elapsedTime = Duration.zero,
     this.isPaused = false,
+    this.isCompleted = false, // 🔥 NEW: Default to false
     List<game_action.Action>? actionHistory,
     this.currentActionIndex = -1,
-    List<VariantConstraint>? constraints, // 🔥 NEW PARAMETER
+    List<VariantConstraint>? constraints,
   })  : grid = grid ?? GameState._createEmptyGrid(),
         selectedCells = selectedCells ?? <Position>{},
         highlightedCells = highlightedCells ?? <Position>{},
         actionHistory = actionHistory ?? <game_action.Action>[],
-        constraints =
-            constraints ?? <VariantConstraint>[]; // 🔥 NEW INITIALIZATION
+        constraints = constraints ?? <VariantConstraint>[];
+
+  // 🔥 NEW: Getter for elapsed seconds (used by SaveService)
+  int get elapsedSeconds => elapsedTime.inSeconds;
+
+  // 🔥 NEW: Getter for current grid (used by level_selection_screen)
+  List<List<int>> get currentGrid {
+    return grid.map((row) {
+      return row.map((cell) => cell.number ?? 0).toList();
+    }).toList();
+  }
 
   // Create empty grid helper
   static List<List<SudokuCell>> _createEmptyGrid() {
@@ -102,9 +113,37 @@ class GameState {
       puzzleId: puzzleId,
       difficulty: puzzleData.difficulty,
       grid: grid,
-      constraints: puzzleData
-          .constraints, // 🔥 FIX: Use puzzleData.constraints instead of passed parameter
+      constraints: puzzleData.constraints,
     );
+  }
+
+  // 🔥 NEW: Method to mark puzzle as completed
+  void markCompleted() {
+    isCompleted = true;
+    print('✅ Puzzle $puzzleId marked as completed!');
+  }
+
+  // 🔥 NEW: Check if grid is fully filled and valid
+  bool isGridComplete() {
+    // Check if all cells are filled
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.number == null || cell.number == 0) {
+          return false;
+        }
+      }
+    }
+
+    // Check if there are any errors
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.isError) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   // JSON serialization methods
@@ -117,9 +156,11 @@ class GameState {
       'currentMode': currentMode.index,
       'selectionMode': selectionMode.index,
       'elapsedTime': elapsedTime.inSeconds,
+      'isPaused': isPaused,
+      'isCompleted': isCompleted, // 🔥 NEW
       'currentActionIndex': currentActionIndex,
       'actionHistory': actionHistory.map((action) => action.toJson()).toList(),
-      'constraints': constraints.map((c) => c.toJson()).toList(), // 🔥 NEW
+      'constraints': constraints.map((c) => c.toJson()).toList(),
     };
   }
 
@@ -137,7 +178,7 @@ class GameState {
         .map((actionJson) => game_action.Action.fromJson(actionJson))
         .toList();
 
-    // 🔥 NEW: Restore constraints
+    // Restore constraints
     final constraintsData = json['constraints'] as List? ?? [];
     final constraints = constraintsData
         .map((constraintJson) => VariantConstraint.fromJson(constraintJson))
@@ -150,9 +191,11 @@ class GameState {
       currentMode: GameMode.values[json['currentMode'] ?? 0],
       selectionMode: SelectionMode.values[json['selectionMode'] ?? 0],
       elapsedTime: Duration(seconds: json['elapsedTime'] ?? 0),
+      isPaused: json['isPaused'] ?? false,
+      isCompleted: json['isCompleted'] ?? false, // 🔥 NEW
       currentActionIndex: json['currentActionIndex'] ?? -1,
       actionHistory: actionHistory,
-      constraints: constraints, // 🔥 NEW
+      constraints: constraints,
     );
   }
 }

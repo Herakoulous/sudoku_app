@@ -1,4 +1,4 @@
-// File path: lib/widgets/game_header.dart
+import '../utils/realm_theme.dart'; // 🔥 ADD THIS
 import 'package:flutter/material.dart';
 
 class GameHeader extends StatelessWidget {
@@ -7,6 +7,7 @@ class GameHeader extends StatelessWidget {
   final Duration elapsedTime;
   final VoidCallback onRestart;
   final VoidCallback onExit;
+  final RealmTheme theme; // 🔥 ADD THIS
 
   const GameHeader({
     super.key,
@@ -15,6 +16,7 @@ class GameHeader extends StatelessWidget {
     required this.elapsedTime,
     required this.onRestart,
     required this.onExit,
+    required this.theme, // 🔥 ADD THIS
   });
 
   @override
@@ -46,7 +48,7 @@ class GameHeader extends StatelessWidget {
 
   Widget buildExitButton() {
     return IconButton(
-      icon: const Icon(Icons.arrow_back),
+      icon: Icon(Icons.arrow_back, color: theme.primaryColor), // 🔥 CHANGED
       onPressed: onExit,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
@@ -55,7 +57,7 @@ class GameHeader extends StatelessWidget {
 
   Widget buildRestartButton() {
     return IconButton(
-      icon: const Icon(Icons.refresh),
+      icon: Icon(Icons.refresh, color: theme.primaryColor), // 🔥 CHANGED
       onPressed: onRestart,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
@@ -65,9 +67,10 @@ class GameHeader extends StatelessWidget {
   Widget buildTimer() {
     return Text(
       _formatDuration(elapsedTime),
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.bold,
+        color: theme.accentColor, // 🔥 CHANGED
       ),
     );
   }
@@ -78,7 +81,7 @@ class GameHeader extends StatelessWidget {
       children: List.generate(10, (index) {
         return Icon(
           index < difficulty ? Icons.star : Icons.star_border,
-          color: Colors.amber,
+          color: theme.primaryColor, // 🔥 CHANGED (was Colors.amber)
           size: 15,
         );
       }),
@@ -88,9 +91,10 @@ class GameHeader extends StatelessWidget {
   Widget buildTitle() {
     return Text(
       puzzleId,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.bold,
+        color: theme.primaryColor, // 🔥 CHANGED
       ),
       textAlign: TextAlign.center,
     );

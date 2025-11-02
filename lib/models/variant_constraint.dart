@@ -1,30 +1,38 @@
 // File path: lib/models/variant_constraint.dart
+import 'position.dart';
 
 /// Types of variant constraints that can be applied to Sudoku puzzles
 enum ConstraintType {
-  KROPKI_WHITE, // Two cells differ by 1 (consecutive)
-  KROPKI_BLACK, // Two cells are in 2:1 ratio
-  // Future variants can be added here:
-  // KILLER_CAGE,
-  // THERMO,
-  // ARROW,
-  // etc.
+  KROPKI_WHITE,
+  KROPKI_BLACK,
+  THERMO, // 🔥 NEW
+  XV_X, // 🔥 NEW (sum = 10)
+  XV_V, // 🔥 NEW (sum = 5)
+  GERMAN_WHISPERS, // 🔥 NEW (diff >= 5)
+  SANDWICH, // 🔥 NEW (sum between 1 and 9)
 }
 
-/// Represents a constraint between two cells in the grid
 class VariantConstraint {
   final ConstraintType type;
   final int row1;
   final int col1;
   final int row2;
   final int col2;
+  final List<Position>? thermoCells; // 🔥 NEW: For thermo bulb-to-tip path
+  final int? sandwichSum; // 🔥 NEW: For sandwich clue value
+  final int? sandwichRow; // 🔥 NEW: Row number for sandwich
+  final int? sandwichCol; // 🔥 NEW: Column number for sandwich
 
-  const VariantConstraint({
+  VariantConstraint({
     required this.type,
     required this.row1,
     required this.col1,
     required this.row2,
     required this.col2,
+    this.thermoCells, // 🔥 NEW
+    this.sandwichSum, // 🔥 NEW
+    this.sandwichRow, // 🔥 NEW
+    this.sandwichCol, // 🔥 NEW
   });
 
   /// Checks if this constraint is between two specific cells (order independent)
@@ -63,16 +71,31 @@ class VariantConstraint {
       'col1': col1,
       'row2': row2,
       'col2': col2,
+      'thermoCells': thermoCells?.map((p) => p.toJson()).toList(), // 🔥 NEW
+      'sandwichSum': sandwichSum, // 🔥 NEW
+      'sandwichRow': sandwichRow, // 🔥 NEW
+      'sandwichCol': sandwichCol, // 🔥 NEW
     };
   }
 
   factory VariantConstraint.fromJson(Map<String, dynamic> json) {
+    List<Position>? thermoCells;
+    if (json['thermoCells'] != null) {
+      thermoCells = (json['thermoCells'] as List)
+          .map((p) => Position.fromJson(p))
+          .toList();
+    }
+
     return VariantConstraint(
       type: ConstraintType.values[json['type']],
       row1: json['row1'],
       col1: json['col1'],
       row2: json['row2'],
       col2: json['col2'],
+      thermoCells: thermoCells, // 🔥 NEW
+      sandwichSum: json['sandwichSum'], // 🔥 NEW
+      sandwichRow: json['sandwichRow'], // 🔥 NEW
+      sandwichCol: json['sandwichCol'], // 🔥 NEW
     );
   }
 

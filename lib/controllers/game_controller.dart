@@ -15,13 +15,20 @@ class GameController extends ChangeNotifier {
     await SaveService.saveGame(gameState);
   }
 
-  // Load saved game state
   Future<void> loadProgress() async {
-    final savedState = await SaveService.loadGame(gameState.puzzleId);
-    if (savedState != null) {
-      gameState = savedState;
-      updateHighlights();
-      notifyListeners();
+    final saved = await SaveService.loadGame(gameState.puzzleId);
+    if (saved != null) {
+      print('🔍 Loaded game has ${saved.constraints.length} constraints');
+      print('🔍 New game has ${gameState.constraints.length} constraints');
+
+      // 🔥 Only load if constraints match (or saved game is newer)
+      if (saved.constraints.length == gameState.constraints.length) {
+        gameState = saved;
+        updateHighlights();
+        notifyListeners();
+      } else {
+        print('⚠️ Constraint mismatch - using fresh puzzle instead');
+      }
     }
   }
 
@@ -369,7 +376,7 @@ class GameController extends ChangeNotifier {
     for (var row in gameState.grid) {
       for (var cell in row) {
         cell.clear();
-        cell.isSelected = false; // 🔥 Clear selection
+        cell.isSelected = false;
         cell.isHighlighted = false;
         cell.isError = false;
       }
@@ -386,6 +393,9 @@ class GameController extends ChangeNotifier {
     // Reset timer
     gameState.elapsedTime = Duration.zero;
     gameState.isPaused = false;
+
+    // ✅ ADD THIS LINE:
+    gameState.isCompleted = false; // Reset completion status
 
     notifyListeners();
   }
@@ -525,8 +535,44 @@ class GameController extends ChangeNotifier {
       print('⚠️ Found errors in $errorCount cells');
     } else {
       print('✅ No errors found - grid is valid so far');
+
+      // 🔥 ADD THIS: Check if puzzle is complete
+      _checkIfComplete();
     }
     print('=====================================\n');
+  }
+
+// 🔥 UPDATE THIS METHOD
+  void _checkIfComplete() async {
+    // Don't check if already completed
+    if (gameState.isCompleted) return;
+
+    // Check if all cells are filled
+    bool isFilled = true;
+    for (var row in gameState.grid) {
+      for (var cell in row) {
+        if (cell.number == null) {
+          isFilled = false;
+          break;
+        }
+      }
+      if (!isFilled) break;
+    }
+
+    // If complete, mark it and save completion (but not the grid)
+    if (isFilled) {
+      print('🎉 PUZZLE COMPLETED!');
+      gameState.markCompleted();
+
+      // 🔥 Save completion status and best time
+      await saveProgress();
+
+      // 🔥 Then immediately clear the grid save
+      await SaveService.clearSave(gameState.puzzleId);
+      print('🗑️ Cleared saved game grid for ${gameState.puzzleId}');
+
+      // The listener in GameScreen will show the dialog
+    }
   }
 
   void startTimer() {
@@ -726,7 +772,6 @@ class GameController extends ChangeNotifier {
     return null;
   }
 
-// Count how many times a number appears in the grid
   int countNumber(int number) {
     int count = 0;
     for (var row in gameState.grid) {
@@ -739,13 +784,10 @@ class GameController extends ChangeNotifier {
     return count;
   }
 
-// Check if a number is complete (appears 9 times)
   bool isNumberComplete(int number) {
     return countNumber(number) >= 9;
   }
 
-  /// Erases a specific number from notes in related cells
-  /// Returns list of actions for cells that were modified
   List<game_action.Action> eraseNotesInRelatedCells(Position pos, int number) {
     print('\n🧹 ========== ERASE NOTES IN RELATED CELLS ==========');
     print(

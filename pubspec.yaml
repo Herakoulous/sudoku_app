@@ -8,6 +8,18 @@ version: 1.0.0+1
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
+flutter:
+  uses-material-design: true
+  fonts:
+  - family: CinzelDecorative
+    fonts:
+      - asset: fonts/CinzelDecorative-Bold.ttf
+        weight: 700
+  assets:
+    - images/castle_background.png
+    - images/castle.jpg
+    - images/realms/
+
 dependencies:
   flutter:
     sdk: flutter
@@ -19,5 +31,3 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^2.0.0
 
-flutter:
-  uses-material-design: true

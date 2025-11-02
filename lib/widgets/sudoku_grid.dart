@@ -4,13 +4,16 @@ import '../controllers/game_controller.dart';
 import '../models/sudoku_cell.dart';
 import '../models/position.dart';
 import '../models/variant_constraint.dart';
+import '../utils/realm_theme.dart'; // 🔥 ADD THIS
 
 class SudokuGrid extends StatefulWidget {
   final GameController controller;
+  final RealmTheme theme; // 🔥 ADD THIS
 
   const SudokuGrid({
     super.key,
     required this.controller,
+    required this.theme, // 🔥 ADD THIS
   });
 
   @override
@@ -62,11 +65,11 @@ class _SudokuGridState extends State<SudokuGrid> {
                 return buildCell(row, col, cell);
               },
             ),
-            // Overlay: Kropki dots (rendered on top of grid)
+            // 🔥 REPLACE THIS SECTION - Overlay: All constraints (rendered on top of grid)
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
-                  painter: KropkiDotsPainter(
+                  painter: ConstraintPainter(
                     constraints: widget.controller.gameState.constraints,
                   ),
                 ),
@@ -234,8 +237,9 @@ class _SudokuGridState extends State<SudokuGrid> {
           fontSize: 24,
           fontWeight: FontWeight.bold,
           color: cell.isGiven
-              ? Colors.black
-              : const Color.fromARGB(255, 0, 38, 70),
+              ? widget
+                  .theme.textPrimary // 🔥 CHANGED: Given numbers in realm color
+              : widget.theme.textSecondary, // 🔥 CHANGED: User numbers lighter
         ),
       ),
     );
@@ -268,9 +272,10 @@ class _SudokuGridState extends State<SudokuGrid> {
               children: topNotes.map((number) {
                 return Text(
                   number.toString(),
-                  style: const TextStyle(
+                  style: TextStyle(
+                    // 🔥 FIXED - was hardcoded black
                     fontSize: 10,
-                    color: Colors.black,
+                    color: widget.theme.textSecondary, // Dark blue
                     fontWeight: FontWeight.w500,
                     height: 1.0,
                   ),
@@ -328,7 +333,7 @@ class _SudokuGridState extends State<SudokuGrid> {
         notes.join(''),
         style: TextStyle(
           fontSize: fontSize,
-          color: Colors.black,
+          color: widget.theme.textSecondary, // 🔥 CHANGED
           fontWeight: FontWeight.w400,
           height: 1.0,
           letterSpacing: 0,
@@ -337,62 +342,58 @@ class _SudokuGridState extends State<SudokuGrid> {
     );
   }
 
+  // In getCellBorder, replace black with theme color:
   Border getCellBorder(SudokuCell cell, int row, int col) {
     if (cell.isSelected && cell.cellColor != null) {
-      return Border.all(
-        width: 4,
-        color: cell.cellColor!,
-      );
+      return Border.all(width: 4, color: cell.cellColor!);
     }
 
     if (cell.isHighlighted && cell.cellColor != null) {
-      return Border.all(
-        width: 4,
-        color: cell.cellColor!,
-      );
+      return Border.all(width: 4, color: cell.cellColor!);
     }
 
     return Border(
       top: BorderSide(
         width: row % 3 == 0 ? 2 : 0.5,
-        color: Colors.black,
+        color: widget.theme.borderColor, // 🔥 CHANGED
       ),
       left: BorderSide(
         width: col % 3 == 0 ? 2 : 0.5,
-        color: Colors.black,
+        color: widget.theme.borderColor, // 🔥 CHANGED
       ),
       right: BorderSide(
         width: col == 8 ? 2 : 0.5,
-        color: Colors.black,
+        color: widget.theme.borderColor, // 🔥 CHANGED
       ),
       bottom: BorderSide(
         width: row == 8 ? 2 : 0.5,
-        color: Colors.black,
+        color: widget.theme.borderColor, // 🔥 CHANGED
       ),
     );
   }
 
+  // In getCellBackgroundColor, replace blue colors:
   Color getCellBackgroundColor(SudokuCell cell) {
     final selectedNumber = widget.controller.getSelectedNumber();
 
     Color color;
 
     if (cell.isError) {
-      color = Colors.red.shade200;
+      color = Colors.red.shade200; // Keep red for errors
     } else if (cell.isSelected) {
-      color = Colors.blue.shade600;
+      color = widget.theme.selectedColor; // 🔥 CHANGED
     } else if (selectedNumber != null &&
         cell.number == selectedNumber &&
         cell.number != null) {
-      color = Colors.blue.shade200;
+      color = widget.theme.sameNumberColor; // 🔥 CHANGED
     } else if (cell.isHighlighted && cell.cellColor != null) {
-      color = Colors.blue.shade100;
+      color = widget.theme.highlightedColor; // 🔥 CHANGED
     } else if (cell.isHighlighted) {
-      color = Colors.blue.shade100;
+      color = widget.theme.highlightedColor; // 🔥 CHANGED
     } else if (cell.cellColor != null) {
       color = cell.cellColor!;
     } else {
-      color = Colors.white;
+      color = widget.theme.backgroundColor; // 🔥 CHANGED (was Colors.white)
     }
 
     return color;
@@ -400,72 +401,392 @@ class _SudokuGridState extends State<SudokuGrid> {
 }
 
 /// Custom painter for rendering Kropki dots between cells
-class KropkiDotsPainter extends CustomPainter {
+/// Custom painter for rendering all constraint types
+class ConstraintPainter extends CustomPainter {
   final List<VariantConstraint> constraints;
 
-  KropkiDotsPainter({required this.constraints});
+  ConstraintPainter({required this.constraints});
 
   @override
   void paint(Canvas canvas, Size size) {
     print('🎨 PAINT at ${DateTime.now()}');
-    print('Stack trace:\n${StackTrace.current}');
     print('🎨 Canvas size: $size');
     print('🎨 Number of constraints: ${constraints.length}');
 
-    final cellSize =
-        size.width / 9; // This is correct - canvas is already the grid size
+    final cellSize = size.width / 9;
     final dotRadius = cellSize * 0.12;
 
     print('🎨 Cell size: $cellSize, Dot radius: $dotRadius');
 
+    // 🔥 NEW: Track painted constraints to avoid duplicates
+    Set<String> paintedConstraints = {};
+
     for (var constraint in constraints) {
-      if (constraint.type != ConstraintType.KROPKI_WHITE &&
-          constraint.type != ConstraintType.KROPKI_BLACK) {
-        continue;
+      // 🔥 NEW: Create unique key for this constraint (order-independent)
+      String constraintKey = '';
+      if (constraint.type == ConstraintType.KROPKI_WHITE ||
+          constraint.type == ConstraintType.KROPKI_BLACK ||
+          constraint.type == ConstraintType.XV_X ||
+          constraint.type == ConstraintType.XV_V ||
+          constraint.type == ConstraintType.GERMAN_WHISPERS) {
+        // For two-cell constraints, create normalized key
+        final minRow = constraint.row1 < constraint.row2
+            ? constraint.row1
+            : constraint.row2;
+        final maxRow = constraint.row1 < constraint.row2
+            ? constraint.row2
+            : constraint.row1;
+        final minCol = constraint.col1 < constraint.col2
+            ? constraint.col1
+            : constraint.col2;
+        final maxCol = constraint.col1 < constraint.col2
+            ? constraint.col2
+            : constraint.col1;
+        constraintKey =
+            '${constraint.type}_${minRow}_${minCol}_${maxRow}_${maxCol}';
+
+        // Skip if already painted
+        if (paintedConstraints.contains(constraintKey)) {
+          print('⏭️ Skipping duplicate: $constraintKey');
+          continue;
+        }
+        paintedConstraints.add(constraintKey);
       }
 
-      final dotColor = constraint.type == ConstraintType.KROPKI_WHITE
-          ? Colors.white
-          : Colors.black;
-
-      Offset dotCenter;
-
-      if (constraint.orientation == 'horizontal') {
-        // Dot between col1 and col2 at row1
-        // Position: right edge of col1 cell = (col1 + 1) * cellSize
-        final x = (constraint.col1 + 1) * cellSize; // 🔥 FIX
-        final y = constraint.row1 * cellSize + cellSize / 2;
-        dotCenter = Offset(x, y);
-        print(
-            '🎨 H-dot: row=${constraint.row1}, cols ${constraint.col1}-${constraint.col2} → $dotCenter');
-      } else {
-        // Dot between row1 and row2 at col1
-        // Position: bottom edge of row1 cell = (row1 + 1) * cellSize
-        final x = constraint.col1 * cellSize + cellSize / 2;
-        final y = (constraint.row1 + 1) * cellSize; // 🔥 FIX
-        dotCenter = Offset(x, y);
-        print(
-            '🎨 V-dot: col=${constraint.col1}, rows ${constraint.row1}-${constraint.row2} → $dotCenter');
+      print('🔥 Constraint type: ${constraint.type}');
+      print(
+          '🔥 Constraint details: row1=${constraint.row1}, col1=${constraint.col1}, row2=${constraint.row2}, col2=${constraint.col2}');
+      if (constraint.thermoCells != null) {
+        print('🔥 Thermo cells: ${constraint.thermoCells!.length}');
+      }
+      if (constraint.sandwichSum != null) {
+        print('🔥 Sandwich sum: ${constraint.sandwichSum}');
       }
 
-      final paint = Paint()
-        ..color = dotColor
-        ..style = PaintingStyle.fill;
-
-      if (constraint.type == ConstraintType.KROPKI_WHITE) {
-        final borderPaint = Paint()
-          ..color = Colors.black
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5;
-        canvas.drawCircle(dotCenter, dotRadius, borderPaint);
+      switch (constraint.type) {
+        case ConstraintType.KROPKI_WHITE:
+        case ConstraintType.KROPKI_BLACK:
+          _paintKropkiDot(canvas, constraint, cellSize, dotRadius);
+          break;
+        case ConstraintType.XV_X:
+        case ConstraintType.XV_V:
+          _paintXV(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.GERMAN_WHISPERS:
+          _paintGermanWhispers(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.THERMO:
+          _paintThermo(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.SANDWICH:
+          _paintSandwich(canvas, constraint, cellSize);
+          break;
       }
-
-      canvas.drawCircle(dotCenter, dotRadius, paint);
     }
   }
 
+  void _paintKropkiDot(Canvas canvas, VariantConstraint constraint,
+      double cellSize, double dotRadius) {
+    final dotColor = constraint.type == ConstraintType.KROPKI_WHITE
+        ? Colors.white
+        : Colors.black;
+
+    Offset dotCenter;
+
+    if (constraint.orientation == 'horizontal') {
+      final x = (constraint.col1 + 1) * cellSize;
+      final y = constraint.row1 * cellSize + cellSize / 2;
+      dotCenter = Offset(x, y);
+      print(
+          '🎨 H-dot: row=${constraint.row1}, cols ${constraint.col1}-${constraint.col2} → $dotCenter');
+    } else {
+      final x = constraint.col1 * cellSize + cellSize / 2;
+      final y = (constraint.row1 + 1) * cellSize;
+      dotCenter = Offset(x, y);
+      print(
+          '🎨 V-dot: col=${constraint.col1}, rows ${constraint.row1}-${constraint.row2} → $dotCenter');
+    }
+
+    final paint = Paint()
+      ..color = dotColor
+      ..style = PaintingStyle.fill;
+
+    if (constraint.type == ConstraintType.KROPKI_WHITE) {
+      final borderPaint = Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+      canvas.drawCircle(dotCenter, dotRadius, borderPaint);
+    }
+
+    canvas.drawCircle(dotCenter, dotRadius, paint);
+  }
+
+  void _paintXV(Canvas canvas, VariantConstraint constraint, double cellSize) {
+    final isX = constraint.type == ConstraintType.XV_X;
+    final text = isX ? 'X' : 'V';
+
+    Offset center;
+    if (constraint.orientation == 'horizontal') {
+      final x = (constraint.col1 + 1) * cellSize;
+      final y = constraint.row1 * cellSize + cellSize / 2;
+      center = Offset(x, y);
+    } else {
+      final x = constraint.col1 * cellSize + cellSize / 2;
+      final y = (constraint.row1 + 1) * cellSize;
+      center = Offset(x, y);
+    }
+
+    // Draw circle background
+    final bgPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, cellSize * 0.15, bgPaint);
+
+    // Draw border
+    final borderPaint = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(center, cellSize * 0.15, borderPaint);
+
+    // Draw text
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: cellSize * 0.2,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        center.dx - textPainter.width / 2,
+        center.dy - textPainter.height / 2,
+      ),
+    );
+
+    print('🎨 XV-${text}: ${constraint.orientation} at $center');
+  }
+
+  void _paintGermanWhispers(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    // Draw green line between cells
+    final paint = Paint()
+      ..color = Color(0xFF22c55e) // Green
+      ..strokeWidth = cellSize * 0.15
+      ..strokeCap = StrokeCap.round;
+
+    Offset start, end;
+    if (constraint.orientation == 'horizontal') {
+      start = Offset(
+        (constraint.col1 + 0.7) * cellSize,
+        constraint.row1 * cellSize + cellSize / 2,
+      );
+      end = Offset(
+        (constraint.col2 + 0.3) * cellSize,
+        constraint.row2 * cellSize + cellSize / 2,
+      );
+    } else {
+      start = Offset(
+        constraint.col1 * cellSize + cellSize / 2,
+        (constraint.row1 + 0.7) * cellSize,
+      );
+      end = Offset(
+        constraint.col2 * cellSize + cellSize / 2,
+        (constraint.row2 + 0.3) * cellSize,
+      );
+    }
+
+    canvas.drawLine(start, end, paint);
+    print('🎨 GermanWhispers: ${constraint.orientation} from $start to $end');
+  }
+
+  void _paintThermo(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    if (constraint.thermoCells == null || constraint.thermoCells!.isEmpty) {
+      return;
+    }
+
+    final cells = constraint.thermoCells!;
+
+    // Draw path line FIRST (behind the bulb)
+    if (cells.length > 1) {
+      final linePaint = Paint()
+        ..color = Color(0xFFe5e7eb).withOpacity(0.9) // Lighter grey
+        ..strokeWidth = cellSize * 0.3
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
+
+      final path = Path();
+      for (int i = 0; i < cells.length; i++) {
+        final center = Offset(
+          cells[i].col * cellSize + cellSize / 2,
+          cells[i].row * cellSize + cellSize / 2,
+        );
+        if (i == 0) {
+          path.moveTo(center.dx, center.dy);
+        } else {
+          path.lineTo(center.dx, center.dy);
+        }
+      }
+      canvas.drawPath(path, linePaint);
+
+      // Add darker border to path
+      final pathBorderPaint = Paint()
+        ..color = Color(0xFF9ca3af)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+      canvas.drawPath(path, pathBorderPaint);
+    }
+
+    // Draw bulb (circle at first cell) ON TOP
+    final bulbCenter = Offset(
+      cells[0].col * cellSize + cellSize / 2,
+      cells[0].row * cellSize + cellSize / 2,
+    );
+
+    // Outer glow
+    final glowPaint = Paint()
+      ..color = Color(0xFF9ca3af).withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(bulbCenter, cellSize * 0.42, glowPaint);
+
+    // Main bulb fill with gradient effect
+    final bulbPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Color(0xFFf3f4f6), // Very light grey (center)
+          Color(0xFFe5e7eb), // Light grey (edge)
+        ],
+        stops: [0.3, 1.0],
+      ).createShader(
+          Rect.fromCircle(center: bulbCenter, radius: cellSize * 0.38))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(bulbCenter, cellSize * 0.38, bulbPaint);
+
+    // Bulb border (thicker and darker)
+    final borderPaint = Paint()
+      ..color = Color(0xFF6b7280)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(bulbCenter, cellSize * 0.38, borderPaint);
+
+    // Add highlight/shine effect on bulb
+    final shinePaint = Paint()
+      ..color = Colors.white.withOpacity(0.6)
+      ..style = PaintingStyle.fill;
+    final shineOffset = Offset(
+      bulbCenter.dx - cellSize * 0.12,
+      bulbCenter.dy - cellSize * 0.12,
+    );
+    canvas.drawCircle(shineOffset, cellSize * 0.12, shinePaint);
+
+    print(
+        '🎨 Thermo: ${cells.length} cells from ${cells.first} to ${cells.last}');
+  }
+
+  void _paintSandwich(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    if (constraint.sandwichSum == null) return;
+
+    final sum = constraint.sandwichSum!;
+    Offset position;
+
+    if (constraint.sandwichRow != null) {
+      // Row sandwich - draw on left or right
+      final row = constraint.sandwichRow!;
+      final isLeft = constraint.col1 == -1;
+      position = Offset(
+        isLeft ? -cellSize * 0.5 : 9 * cellSize + cellSize * 0.5,
+        row * cellSize + cellSize / 2,
+      );
+    } else {
+      // Column sandwich - draw on top or bottom
+      final col = constraint.sandwichCol!;
+      final isTop = constraint.row1 == -1;
+      position = Offset(
+        col * cellSize + cellSize / 2,
+        isTop ? -cellSize * 0.5 : 9 * cellSize + cellSize * 0.5,
+      );
+    }
+
+    final radius = cellSize * 0.35;
+
+    // Outer glow/shadow
+    final shadowPaint = Paint()
+      ..color = Color(0xFFf59e0b).withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(position, radius + 3, shadowPaint);
+
+    // Main circle with gradient
+    final bgPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Color(0xFFfde047), // Bright yellow (center)
+          Color(0xFFfbbf24), // Golden yellow (edge)
+        ],
+        stops: [0.4, 1.0],
+      ).createShader(Rect.fromCircle(center: position, radius: radius))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(position, radius, bgPaint);
+
+    // Thicker border with darker gold
+    final borderPaint = Paint()
+      ..color = Color(0xFFd97706) // Darker orange-gold
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(position, radius, borderPaint);
+
+    // Inner highlight circle
+    final innerHighlight = Paint()
+      ..color = Color(0xFFfef3c7).withOpacity(0.5)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(
+      Offset(position.dx - radius * 0.2, position.dy - radius * 0.2),
+      radius * 0.3,
+      innerHighlight,
+    );
+
+    // Draw number with better styling
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: sum.toString(),
+        style: TextStyle(
+          color: Color(0xFF78350f), // Dark brown for contrast
+          fontSize: cellSize * 0.28,
+          fontWeight: FontWeight.w900, // Extra bold
+          shadows: [
+            Shadow(
+              color: Colors.white.withOpacity(0.5),
+              offset: Offset(0.5, 0.5),
+              blurRadius: 1,
+            ),
+          ],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        position.dx - textPainter.width / 2,
+        position.dy - textPainter.height / 2,
+      ),
+    );
+
+    print('🎨 Sandwich: sum=$sum at $position');
+  }
+
   @override
-  bool shouldRepaint(KropkiDotsPainter oldDelegate) {
+  bool shouldRepaint(ConstraintPainter oldDelegate) {
     return false;
   }
 }
