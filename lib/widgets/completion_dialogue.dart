@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../utils/realm_theme.dart';
 
 class CompletionDialog extends StatefulWidget {
+  static const bool debugShowCheckedModeBanner = false;
   final String puzzleId;
   final int difficulty;
   final Duration elapsedTime;
@@ -33,21 +34,35 @@ class _CompletionDialogState extends State<CompletionDialog>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
+  late Animation<double> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: Duration(milliseconds: 600),
+      duration: Duration(milliseconds: 800),
       vsync: this,
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Interval(0.0, 0.6, curve: Curves.elasticOut),
+      ),
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+      CurvedAnimation(
+        parent: _controller,
+        curve: Interval(0.0, 0.5, curve: Curves.easeOut),
+      ),
+    );
+
+    _slideAnimation = Tween<double>(begin: 30.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Interval(0.3, 1.0, curve: Curves.easeOutCubic),
+      ),
     );
 
     _controller.forward();
@@ -72,255 +87,245 @@ class _CompletionDialogState extends State<CompletionDialog>
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: Stack(
+      insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            children: [
+              ...List.generate(
+                  30, (index) => _buildParticle(index, constraints.maxWidth)),
+              _buildDialogContent(screenHeight),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDialogContent(double screenHeight) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 420,
+            maxHeight: screenHeight - 48,
+          ),
+          decoration: _buildDialogDecoration(),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Material(
+              color: Colors.transparent,
+              child: SingleChildScrollView(
+                physics: BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildHeader(),
+                    _buildStatsSection(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  BoxDecoration _buildDialogDecoration() {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF0A101A),
+          Color(0xFF1a2030),
+          Color(0xFF0A101A),
+        ],
+      ),
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(
+        color: widget.theme.primaryColor.withOpacity(0.3),
+        width: 2,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: widget.theme.primaryColor.withOpacity(0.2),
+          blurRadius: 40,
+          spreadRadius: 0,
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.5),
+          blurRadius: 20,
+          spreadRadius: 5,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: 24, horizontal: 28),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            widget.theme.primaryColor.withOpacity(0.15),
+            Colors.transparent,
+          ],
+        ),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(22),
+          topRight: Radius.circular(22),
+        ),
+      ),
+      child: Column(
         children: [
-          // Confetti effect
-          ...List.generate(20, (index) => _buildConfetti(index)),
+          _buildAnimatedTrophy(),
+          SizedBox(height: 12),
+          _buildTitle(),
+          SizedBox(height: 4),
+          _buildPuzzleId(),
+        ],
+      ),
+    );
+  }
 
-          // Main dialog content
-          ScaleTransition(
-            scale: _scaleAnimation,
-            child: Container(
-              constraints: BoxConstraints(maxWidth: 400),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.theme.primaryColor.withOpacity(0.3),
-                    blurRadius: 30,
-                    spreadRadius: 5,
-                  ),
+  Widget _buildAnimatedTrophy() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: 600),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.8 + (value * 0.2),
+          child: Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  widget.theme.accentColor.withOpacity(0.3),
+                  widget.theme.primaryColor.withOpacity(0.1),
+                  Colors.transparent,
                 ],
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header with trophy
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          widget.theme.primaryColor,
-                          widget.theme.accentColor,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(24),
-                        topRight: Radius.circular(24),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        // Trophy icon
-                        Icon(
-                          Icons.emoji_events,
-                          size: 80,
-                          color: Colors.white,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'Puzzle Complete!',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          widget.puzzleId.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white.withOpacity(0.9),
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+            ),
+            child: Icon(
+              Icons.emoji_events,
+              size: 50,
+              color: widget.theme.accentColor,
+              shadows: [
+                Shadow(
+                  color: widget.theme.accentColor.withOpacity(0.5),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-                  // Stats section
-                  Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      children: [
-                        // Time
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.timer,
-                              color: widget.theme.primaryColor,
-                              size: 32,
-                            ),
-                            SizedBox(width: 12),
-                            Text(
-                              _formatTime(widget.elapsedTime),
-                              style: TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ],
-                        ),
+  Widget _buildTitle() {
+    return ShaderMask(
+      shaderCallback: (bounds) => LinearGradient(
+        colors: [
+          widget.theme.primaryColor,
+          widget.theme.accentColor,
+        ],
+      ).createShader(bounds),
+      child: Text(
+        'PUZZLE COMPLETE',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+          letterSpacing: 2,
+          fontFamily: 'CinzelDecorative',
+        ),
+      ),
+    );
+  }
 
-                        // New best time badge
-                        if (isNewBestTime) ...[
-                          SizedBox(height: 12),
-                          FadeTransition(
-                            opacity: _fadeAnimation,
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.amber,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.amber.withOpacity(0.4),
-                                    blurRadius: 8,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.star,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'NEW BEST TIME!',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ] else if (widget.previousBestTime != null) ...[
-                          SizedBox(height: 8),
-                          Text(
-                            'Best: ${_formatTime(widget.previousBestTime!)}',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
+  Widget _buildPuzzleId() {
+    return Text(
+      widget.puzzleId.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        color: Colors.white.withOpacity(0.6),
+        letterSpacing: 3,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
 
-                        SizedBox(height: 24),
+  Widget _buildStatsSection() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 12, 24, 20),
+      child: AnimatedBuilder(
+        animation: _slideAnimation,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(0, _slideAnimation.value),
+            child: Column(
+              children: [
+                _buildTimeDisplay(),
+                SizedBox(height: 8),
+                _buildBestTimeBadge(),
+                SizedBox(height: 14),
+                _buildDifficultyStars(),
+                SizedBox(height: 18),
+                _buildActionButtons(),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-                        // Difficulty stars
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(
-                            widget.difficulty.clamp(1, 5),
-                            (index) => Icon(
-                              Icons.star,
-                              color: widget.theme.primaryColor,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-
-                        SizedBox(height: 32),
-
-                        // Action buttons
-                        Column(
-                          children: [
-                            // Next Puzzle button
-                            SizedBox(
-                              width: double.infinity,
-                              height: 50,
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                  widget.onNextPuzzle();
-                                },
-                                icon: Icon(Icons.arrow_forward),
-                                label: Text(
-                                  'Next Puzzle',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: widget.theme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 12),
-
-                            // Play Again button
-                            SizedBox(
-                              width: double.infinity,
-                              height: 50,
-                              child: OutlinedButton.icon(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                  widget.onPlayAgain();
-                                },
-                                icon: Icon(Icons.refresh),
-                                label: Text(
-                                  'Play Again',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: widget.theme.primaryColor,
-                                  side: BorderSide(
-                                    color: widget.theme.primaryColor,
-                                    width: 2,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 12),
-
-                            // Back to Levels button
-                            TextButton.icon(
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                                widget.onBackToLevels();
-                              },
-                              icon: Icon(Icons.grid_view, size: 20),
-                              label: Text('Back to Levels'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+  Widget _buildTimeDisplay() {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+      decoration: BoxDecoration(
+        color: widget.theme.primaryColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: widget.theme.primaryColor.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.timer_outlined,
+            color: widget.theme.primaryColor,
+            size: 22,
+          ),
+          SizedBox(width: 8),
+          Text(
+            _formatTime(widget.elapsedTime),
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              color: widget.theme.primaryColor,
+              letterSpacing: 1,
+              shadows: [
+                Shadow(
+                  color: widget.theme.primaryColor.withOpacity(0.3),
+                  blurRadius: 10,
+                ),
+              ],
             ),
           ),
         ],
@@ -328,37 +333,269 @@ class _CompletionDialogState extends State<CompletionDialog>
     );
   }
 
-  Widget _buildConfetti(int index) {
+  Widget _buildBestTimeBadge() {
+    if (isNewBestTime) {
+      return TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: Duration(milliseconds: 800),
+        curve: Curves.elasticOut,
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: value,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    widget.theme.accentColor,
+                    widget.theme.accentColor.withOpacity(0.8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: widget.theme.accentColor.withOpacity(0.4),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.star_rounded,
+                    color: Color(0xFF0A101A),
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'NEW BEST TIME!',
+                    style: TextStyle(
+                      color: Color(0xFF0A101A),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } else if (widget.previousBestTime != null) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.emoji_events_outlined,
+              color: widget.theme.accentColor.withOpacity(0.6),
+              size: 16,
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Best: ${_formatTime(widget.previousBestTime!)}',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return SizedBox.shrink();
+  }
+
+  Widget _buildDifficultyStars() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(
+        widget.difficulty.clamp(1, 5),
+        (index) => Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2),
+          child: Icon(
+            Icons.star_rounded,
+            color: widget.theme.accentColor,
+            size: 20,
+            shadows: [
+              Shadow(
+                color: widget.theme.accentColor.withOpacity(0.5),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        _buildNextPuzzleButton(),
+        SizedBox(height: 8),
+        _buildPlayAgainButton(),
+        SizedBox(height: 6),
+        _buildBackToLevelsButton(),
+      ],
+    );
+  }
+
+  Widget _buildNextPuzzleButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 46,
+      child: ElevatedButton(
+        onPressed: () {
+          Navigator.of(context).pop();
+          widget.onNextPuzzle();
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: widget.theme.primaryColor,
+          foregroundColor: Color(0xFF0A101A),
+          elevation: 0,
+          shadowColor: widget.theme.primaryColor.withOpacity(0.4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'NEXT PUZZLE',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+            SizedBox(width: 6),
+            Icon(Icons.arrow_forward_rounded, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayAgainButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 46,
+      child: OutlinedButton(
+        onPressed: () {
+          Navigator.of(context).pop();
+          widget.onPlayAgain();
+        },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: widget.theme.primaryColor,
+          side: BorderSide(
+            color: widget.theme.primaryColor.withOpacity(0.5),
+            width: 2,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.refresh_rounded, size: 18),
+            SizedBox(width: 6),
+            Text(
+              'PLAY AGAIN',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackToLevelsButton() {
+    return TextButton(
+      onPressed: () {
+        Navigator.of(context).pop();
+        widget.onBackToLevels();
+      },
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white.withOpacity(0.5),
+        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.grid_view_rounded, size: 16),
+          SizedBox(width: 6),
+          Text(
+            'Back to Levels',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticle(int index, double maxWidth) {
     final random = math.Random(index);
-    final size = random.nextDouble() * 8 + 4;
-    final left = random.nextDouble() * 400;
-    final top = -random.nextDouble() * 100;
+    final size = random.nextDouble() * 6 + 3;
+    final left = random.nextDouble() * maxWidth;
+    final top = -random.nextDouble() * 150;
+
     final colors = [
-      Colors.red,
-      Colors.blue,
-      Colors.green,
-      Colors.yellow,
-      Colors.purple,
-      Colors.orange,
-      Colors.pink,
+      widget.theme.primaryColor,
+      widget.theme.accentColor,
+      widget.theme.primaryColor.withOpacity(0.6),
+      widget.theme.accentColor.withOpacity(0.6),
     ];
     final color = colors[random.nextInt(colors.length)];
+    final duration = 2500 + random.nextInt(1500);
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 2000 + random.nextInt(1000)),
+      duration: Duration(milliseconds: duration),
       builder: (context, value, child) {
         return Positioned(
-          left: left,
-          top: top + (500 * value),
-          child: Transform.rotate(
-            angle: value * math.pi * 4,
-            child: Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                color: color,
-                shape: random.nextBool() ? BoxShape.circle : BoxShape.rectangle,
+          left: left + (random.nextDouble() * 40 - 20) * value,
+          top: top + (600 * value),
+          child: Opacity(
+            opacity: (1 - value).clamp(0.0, 1.0),
+            child: Transform.rotate(
+              angle: value * math.pi * 6,
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle, // Always circle for particles
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.5),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

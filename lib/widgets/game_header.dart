@@ -1,13 +1,16 @@
-import '../utils/realm_theme.dart'; // 🔥 ADD THIS
+import '../utils/realm_theme.dart';
 import 'package:flutter/material.dart';
+import '../services/settings_service.dart';
+import '../widgets/settings_screen.dart';
 
-class GameHeader extends StatelessWidget {
+class GameHeader extends StatefulWidget {
   final int difficulty;
   final String puzzleId;
   final Duration elapsedTime;
   final VoidCallback onRestart;
   final VoidCallback onExit;
-  final RealmTheme theme; // 🔥 ADD THIS
+  final RealmTheme theme;
+  final VoidCallback? onPause;
 
   const GameHeader({
     super.key,
@@ -16,31 +19,72 @@ class GameHeader extends StatelessWidget {
     required this.elapsedTime,
     required this.onRestart,
     required this.onExit,
-    required this.theme, // 🔥 ADD THIS
+    required this.theme,
+    this.onPause,
   });
+
+  @override
+  State<GameHeader> createState() => _GameHeaderState();
+}
+
+class _GameHeaderState extends State<GameHeader> {
+  bool _showTimer = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final showTimer = await SettingsService.getShowTimer();
+    if (mounted) {
+      setState(() => _showTimer = showTimer);
+    }
+  }
+
+  void _openSettings() async {
+    widget.onPause?.call();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+    );
+
+    await _loadSettings();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          buildExitButton(),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                buildTitle(),
-                const SizedBox(height: 4),
-                buildStarRating(),
+          // Top row: Exit button, Title, and action buttons
+          Row(
+            children: [
+              buildExitButton(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    buildTitle(),
+                    const SizedBox(height: 4),
+                    buildStarRating(),
+                  ],
+                ),
+              ),
+              buildSettingsButton(),
+              const SizedBox(width: 4),
+              if (_showTimer) ...[
+                buildTimer(),
+                const SizedBox(width: 2),
               ],
-            ),
+              buildRestartButton(),
+            ],
           ),
-          const SizedBox(width: 8),
-          buildTimer(),
-          const SizedBox(width: 8),
-          buildRestartButton(),
         ],
       ),
     );
@@ -48,29 +92,45 @@ class GameHeader extends StatelessWidget {
 
   Widget buildExitButton() {
     return IconButton(
-      icon: Icon(Icons.arrow_back, color: theme.primaryColor), // 🔥 CHANGED
-      onPressed: onExit,
+      icon: Icon(Icons.arrow_back, color: widget.theme.primaryColor, size: 20),
+      onPressed: widget.onExit,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
+      iconSize: 20,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  Widget buildSettingsButton() {
+    return IconButton(
+      icon: Icon(Icons.settings, color: widget.theme.primaryColor, size: 20),
+      onPressed: _openSettings,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      tooltip: 'Settings',
+      iconSize: 20,
+      visualDensity: VisualDensity.compact,
     );
   }
 
   Widget buildRestartButton() {
     return IconButton(
-      icon: Icon(Icons.refresh, color: theme.primaryColor), // 🔥 CHANGED
-      onPressed: onRestart,
+      icon: Icon(Icons.refresh, color: widget.theme.primaryColor, size: 20),
+      onPressed: widget.onRestart,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
+      iconSize: 20,
+      visualDensity: VisualDensity.compact,
     );
   }
 
   Widget buildTimer() {
     return Text(
-      _formatDuration(elapsedTime),
+      _formatDuration(widget.elapsedTime),
       style: TextStyle(
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: FontWeight.bold,
-        color: theme.accentColor, // 🔥 CHANGED
+        color: widget.theme.accentColor,
       ),
     );
   }
@@ -80,9 +140,9 @@ class GameHeader extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(10, (index) {
         return Icon(
-          index < difficulty ? Icons.star : Icons.star_border,
-          color: theme.primaryColor, // 🔥 CHANGED (was Colors.amber)
-          size: 15,
+          index < widget.difficulty ? Icons.star : Icons.star_border,
+          color: widget.theme.primaryColor,
+          size: 14,
         );
       }),
     );
@@ -90,13 +150,15 @@ class GameHeader extends StatelessWidget {
 
   Widget buildTitle() {
     return Text(
-      puzzleId,
+      widget.puzzleId,
       style: TextStyle(
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: FontWeight.bold,
-        color: theme.primaryColor, // 🔥 CHANGED
+        color: widget.theme.primaryColor,
       ),
       textAlign: TextAlign.center,
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
     );
   }
 

@@ -537,27 +537,32 @@ class ConstraintPainter extends CustomPainter {
       center = Offset(x, y);
     }
 
-    // Draw circle background
+    // Draw background that erases grid lines
+    // This needs to be the base background color of the grid
     final bgPaint = Paint()
-      ..color = Colors.white
+      ..color = Colors.white // Use your theme.backgroundColor here if not white
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, cellSize * 0.15, bgPaint);
 
-    // Draw border
-    final borderPaint = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    canvas.drawCircle(center, cellSize * 0.15, borderPaint);
+    final lineEraserSize = cellSize * 0.25;
+    final bgRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: center,
+        width: lineEraserSize,
+        height: lineEraserSize,
+      ),
+      Radius.circular(2),
+    );
+    canvas.drawRRect(bgRect, bgPaint);
 
     // Draw text
     final textPainter = TextPainter(
       text: TextSpan(
         text: text,
         style: TextStyle(
-          color: Colors.black,
-          fontSize: cellSize * 0.2,
+          color: Colors.black87,
+          fontSize: cellSize * 0.35,
           fontWeight: FontWeight.bold,
+          letterSpacing: 0,
         ),
       ),
       textDirection: TextDirection.ltr,

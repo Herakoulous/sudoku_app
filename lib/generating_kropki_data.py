@@ -125,6 +125,57 @@ def gen(color, col1, row1, col2, row2):
 crypted2 = "eweeebweeeebeeeeeeewweeewweeebeeeweebweeeweeeweweeeeeweeeeeweebeewebweee"    # horizontal
 crypted1 = "eeeweeweewbeeeeeeeeewbeeeeeeewebweweweeeeeebeweeebeeeweeewewewweeebeeeew"  # vertical
 
+"eeweweee bwebewee eewwewee wweeeeee eweeeebb eewebbeb bebeweee eeeeeeee eeeweee"
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+""
+
+""
+
+""
+
+""
+""
+
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+""
+""
+
+
+
+
+
 print("crypted1 length:", len(crypted1))  # should be 72
 print("crypted2 length:", len(crypted2))  # should be 72
 

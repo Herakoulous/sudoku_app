@@ -5,29 +5,37 @@
 /*
 WHAT YOU'RE BUILDING:
 A professional Flutter Sudoku game called "Sudoku Realms" featuring:
-- Multiple themed puzzle realms (Classic Kingdom, Kropki Forest, etc.)
-- Variant Sudoku puzzles with visual constraints (Kropki dots system)
+- Multiple themed puzzle realms (Classic Kingdom, Kropki Forest, Thermo Desert, etc.)
+- Variant Sudoku puzzles with visual constraints (Kropki dots, Thermo, XV, German Whispers, Sandwich)
 - Advanced gameplay: drag selection, auto note-erasing, coloring modes
 - Complete progression system with save/load, completion tracking, best times
 - Realm-specific theming and visual design
 - Professional UI with castle-themed backgrounds and custom fonts
+- Settings system for user preferences
+- Statistics tracking and achievements
 
 =============================================================================
 APPLICATION ENTRY & NAVIGATION
 =============================================================================
 
 main.dart - Application Bootstrap
-├── SudokuRealmsApp (MaterialApp)
+├── SudokuRealmsApp (StatefulWidget)
 │   ├── Theme: Primary(0xFF6D9DC5), Secondary(0xFFB4975A)
 │   ├── Home: MainMenuScreen()
-│   └── Routes:
+│   ├── Image Preloading: Preloads castle backgrounds and realm images
+│   └── Routes (onGenerateRoute):
 │       ├── '/realm-selection' → RealmSelectionScreen()
 │       ├── '/level-selection' → LevelSelectionScreen(realmName, puzzles)
-│       └── '/game' → GameScreen(puzzleId, difficulty, realmName)
+│       ├── '/game' → GameScreen(puzzleId, difficulty, realmName)
+│       ├── '/statistics' → StatisticsScreen()
+│       └── '/settings' → SettingsScreen()
+│   └── Transitions: Custom fade-slide transitions for all routes
 
 FUNCTION RESPONSIBILITIES:
 - main(): Initializes Flutter app with runApp()
 - SudokuRealmsApp.build(): Sets up MaterialApp with theme, routes, home screen
+- createFadeSlideRoute(): Custom page transition with fade and slide effects
+- _precacheImages(): Preloads background images for smooth transitions
 
 NAVIGATION FLOW:
 MainMenu → RealmSelection → LevelSelection → GameScreen
@@ -37,7 +45,7 @@ Each screen passes data to the next via route arguments
 SCREEN ARCHITECTURE & RESPONSIBILITIES
 =============================================================================
 
-1) MAIN MENU SCREEN (main_menu_screen.dart)
+1) MAIN MENU SCREEN (widgets/main_menu_screen.dart)
    PURPOSE: App entry point with themed castle background
    
    MainMenuScreen Class:
@@ -52,7 +60,7 @@ SCREEN ARCHITECTURE & RESPONSIBILITIES
    - Primary color (0xFF6D9DC5) background on hover
    - onPressed(): Navigates to respective screens
 
-2) REALM SELECTION SCREEN (menu_screen.dart)
+2) REALM SELECTION SCREEN (widgets/menu_screen.dart)
    PURPOSE: Choose themed puzzle realm
    
    RealmSelectionScreen Class:
@@ -66,25 +74,28 @@ SCREEN ARCHITECTURE & RESPONSIBILITIES
    - onTap(): Updates selection and navigates to level selection
    - Passes realmName and puzzles to next screen
 
-3) LEVEL SELECTION SCREEN (level_selection_screen.dart)
+3) LEVEL SELECTION SCREEN (widgets/level_selection_screen.dart)
    PURPOSE: Choose specific puzzle within selected realm
    
    LevelSelectionScreenState Class:
    - expandedPuzzleIndex: Tracks which puzzle is expanded (int?)
    - savedGames: Map<String, GameState?> - cached save data
    - bestTimes: Map<String, int?> - cached best completion times
+   - completedStatus: Map<String, bool> - completion flags
    - puzzleList: Casts dynamic puzzles to List<PuzzleData>
    
    Key Methods:
    - _loadSavedGames(): Loads progress for all puzzles in realm
-   - _buildPuzzleGrid(): Creates 4-column responsive grid
-   - _buildExpandedGrid(): Shows detailed puzzle preview with mini grid
-   - _calculateProgress(): Computes completion percentage (0.0-1.0)
    - _togglePuzzle(): Expands/collapses puzzle details
-   - _buildSudokuGrid(): Mini 9x9 preview of puzzle state
+   - _calculateProgress(): Computes completion percentage (0.0-1.0)
    - _formatTime(): Converts seconds to MM:SS format
+   - _navigateToGame(): Navigates to game with saved state
+   - _startNewGame(): Clears save and starts fresh game
+   - _getUnlockedCount(): Calculates unlocked puzzles (4 + completed count)
+   
+   Uses PuzzleGridBuilder widget for rendering puzzle grid
 
-4) GAME SCREEN (game_screen.dart)
+4) GAME SCREEN (widgets/game_screen.dart)
    PURPOSE: Main gameplay interface with timer and controls
    
    GameScreenState Class:
@@ -92,11 +103,16 @@ SCREEN ARCHITECTURE & RESPONSIBILITIES
    - theme: RealmTheme for visual styling (late)
    - _timer: Timer for elapsed time updates
    - _timerNotifier: ValueNotifier<Duration> for efficient updates
+   - _hasShownRules: bool - tracks if rules popup was shown
    
    Lifecycle Methods:
    - initState(): Creates controller, theme, loads saved game, starts timer
    - _loadSavedGame(): Restores previous progress via controller
    - _startTimer(): 1-second periodic timer for elapsed time
+   - _showRulesIfNeeded(): Shows rules popup on first load if no user input
+   - _showRulesPopup(): Displays rules dialog and pauses timer
+   - _onGameStateChanged(): Listens for completion and shows dialog
+   - _checkAndShowCompletion(): Shows completion dialog with best time
    - dispose(): Saves progress, cancels timer, cleans up resources
    
    UI Structure:
@@ -104,11 +120,51 @@ SCREEN ARCHITECTURE & RESPONSIBILITIES
    - SudokuGrid (with RepaintBoundary for performance)
    - NumberPad (input controls)
 
+5) SETTINGS SCREEN (widgets/settings_screen.dart)
+   PURPOSE: User preferences and app configuration
+   
+   SettingsScreenState Class:
+   - Settings state: showMistakes, showTimer, autoNotes, soundEffects, music, realmBackgrounds, theme
+   - _isLoading: bool - tracks initial load state
+   
+   Key Methods:
+   - _loadSettings(): Loads all settings from SettingsService
+   - _updateShowMistakes/ShowTimer/AutoNotes(): Updates individual settings
+   - _updateSoundEffects/Music/RealmBackgrounds/Theme(): Shows "not available" snackbar
+   - _restoreDefaults(): Resets all settings to defaults
+   
+   UI Sections:
+   - GAMEPLAY: Show Mistakes, Show Timer, Auto Notes
+   - AUDIO: Sound Effects, Music (not implemented)
+   - APPEARANCE: Realm Backgrounds, Theme (not implemented)
+
+6) STATISTICS SCREEN (widgets/statistics_screen.dart)
+   PURPOSE: Display player progress and achievements
+   
+   StatisticsScreenState Class:
+   - stats: Map<String, dynamic> - aggregated statistics
+   - isLoading: bool - tracks loading state
+   
+   Key Methods:
+   - _loadStatistics(): Calculates stats from all puzzles
+   - _formatTime(): Formats seconds to MM:SS
+   - _formatTotalTime(): Formats seconds to hours/minutes
+   - _getDifficultyLabel(): Converts difficulty to label
+   
+   Statistics Displayed:
+   - Overall Progress: Completion percentage with circular progress
+   - Average Solving Time
+   - Total Play Time
+   - Stars Collected
+   - Undos Used
+   - Fastest/Slowest Completions (top 3)
+   - Achievements: First Puzzle, Speed Solver, Realm Conqueror, etc.
+
 =============================================================================
 CORE DATA MODELS & STRUCTURES
 =============================================================================
 
-1) POSITION (position.dart)
+1) POSITION (models/position.dart)
    PURPOSE: Immutable grid coordinate representation
    
    Properties:
@@ -123,7 +179,7 @@ CORE DATA MODELS & STRUCTURES
    - toJson(): Serialization {"row": row, "col": col}
    - fromJson(): Deserialization from Map<String, dynamic>
 
-2) SUDOKU CELL (sudoku_cell.dart)
+2) SUDOKU CELL (models/sudoku_cell.dart)
    PURPOSE: Individual cell state with all properties and behaviors
    
    Core Properties:
@@ -159,7 +215,7 @@ CORE DATA MODELS & STRUCTURES
    - toJson(): Complete state to Map (excludes visual flags)
    - fromJson(): Restoration from Map
 
-3) ACTION SYSTEM (action.dart)
+3) ACTION SYSTEM (models/action.dart)
    PURPOSE: Comprehensive undo/redo with atomic operations
    
    ActionType Enum:
@@ -184,7 +240,7 @@ CORE DATA MODELS & STRUCTURES
    - timestamp: DateTime - group creation time
    - Enables atomic undo/redo of multi-cell operations
 
-4) GAME STATE (game_state.dart)
+4) GAME STATE (models/game_state.dart)
    PURPOSE: Complete game state management and persistence
    
    Enums:
@@ -223,17 +279,25 @@ CORE DATA MODELS & STRUCTURES
    - currentGrid: Getter for level selection preview
    - toJson()/fromJson(): Complete state persistence
 
-5) VARIANT CONSTRAINTS (variant_constraint.dart)
-   PURPOSE: Special puzzle rules system (Kropki dots, future variants)
+5) VARIANT CONSTRAINTS (models/variant_constraint.dart)
+   PURPOSE: Special puzzle rules system
    
    ConstraintType Enum:
    - KROPKI_WHITE: Adjacent cells differ by 1 (consecutive)
    - KROPKI_BLACK: Adjacent cells in 2:1 ratio (double)
-   - Future: KILLER_CAGE, THERMO, ARROW, etc.
+   - THERMO: Thermometer constraint (increasing from bulb to tip)
+   - XV_X: Sum equals 10 (X)
+   - XV_V: Sum equals 5 (V)
+   - GERMAN_WHISPERS: Adjacent cells differ by at least 5
+   - SANDWICH: Sum between 1 and 9 in row/column
    
    VariantConstraint Class:
    - type: ConstraintType - constraint category
-   - row1, col1, row2, col2: Two connected cells
+   - row1, col1, row2, col2: Two connected cells (for Kropki, XV, German Whispers)
+   - thermoCells: List<Position>? - Full path for thermo constraints
+   - sandwichSum: int? - Sum value for sandwich constraints
+   - sandwichRow: int? - Row number for sandwich (if row constraint)
+   - sandwichCol: int? - Column number for sandwich (if column constraint)
    
    Utility Methods:
    - isBetween(r1,c1,r2,c2): Checks if constraint applies to cell pair
@@ -253,8 +317,10 @@ CORE RESPONSIBILITIES:
 
 CELL SELECTION SYSTEM:
 - handleCellTap(row, col):
-  * Single mode: Select one cell, clear others
-  * Multiple mode: Add/remove from selection
+  * Single mode: 
+    - If tapping already selected cell: Unselects it (clears selection)
+    - If tapping different cell: Clears all selections, selects new cell
+  * Multiple mode: Toggles cell in/out of selection (add if not selected, remove if selected)
   * Updates gameState.selectedCells Set<Position>
   * Calls updateHighlights() and notifyListeners()
 
@@ -267,15 +333,16 @@ DRAG SELECTION SYSTEM:
 NUMBER INPUT PROCESSING:
 - handleNumberInput(number):
   * NORMAL mode: Sets main number, clears notes
-  * SIDE_NOTES mode: Toggles corner pencil marks
-  * CENTER_NOTES mode: Toggles center pencil marks
+  * SIDE_NOTES mode: Toggles corner pencil marks (keeps center notes)
+  * CENTER_NOTES mode: Toggles center pencil marks (keeps side notes)
   * COLORING mode: Sets cell background color
   * Creates Action objects for undo/redo
-  * Calls eraseNotesInRelatedCells() for main numbers
+  * Calls eraseNotesInRelatedCells() for main numbers (if auto-notes enabled)
   * Groups related actions for atomic operations
 
 AUTO NOTE ERASING ALGORITHM:
 - eraseNotesInRelatedCells(position, number):
+  * Checks SettingsService.getAutoNotes() before erasing
   * Finds all cells in same row, column, and 3x3 box
   * Removes conflicting number from their side and center notes
   * Creates ERASE_NOTE actions for undo support
@@ -291,13 +358,22 @@ CELL ERASURE:
 
 VALIDATION SYSTEM:
 - validateGrid():
+  * Checks SettingsService.getShowMistakes() before showing errors
   * Checks each filled cell for conflicts
   * Row validation: No duplicate numbers 1-9
   * Column validation: No duplicate numbers 1-9
   * Box validation: No duplicates in 3x3 sections
   * Sets isError flag on conflicting cells
   * Real-time feedback on every change
-  * Prints debug information for conflicts
+  * Calls _checkIfComplete() when no errors found
+
+COMPLETION CHECKING:
+- _checkIfComplete():
+  * Checks if all cells are filled
+  * Verifies no errors exist
+  * Marks puzzle as completed
+  * Saves completion status and best time
+  * Clears saved game grid (keeps completion status)
 
 HIGHLIGHTING SYSTEM:
 - updateHighlights():
@@ -326,50 +402,87 @@ UTILITY FUNCTIONS:
 
 PERSISTENCE:
 - saveProgress(): Stores current state via SaveService
-- loadProgress(): Restores saved state, updates highlights
+- loadProgress(): Restores saved state, validates constraints match, updates highlights
+
+TIMER MANAGEMENT:
+- startTimer(): Resumes timer
+- pauseTimer(): Pauses timer
 
 =============================================================================
-SAVE SERVICE - PERSISTENCE LAYER
+SERVICES - DATA PERSISTENCE & SETTINGS
 =============================================================================
 
-save_service.dart - Data Persistence Management (static methods)
-PURPOSE: Handles all save/load operations using SharedPreferences
+1) SAVE SERVICE (services/save_service.dart)
+   PURPOSE: Handles all save/load operations using SharedPreferences
+   
+   KEY PREFIXES:
+   - _keyPrefix: 'sudoku_game_' - main save data
+   - _completedPrefix: 'sudoku_completed_' - completion flags
+   - _bestTimePrefix: 'sudoku_best_time_' - fastest completion times
+   
+   GAME STATE PERSISTENCE:
+   - saveGame(GameState):
+     * Checks if puzzle has user input (skips save if none)
+     * Don't save grid if puzzle is completed (only save completion status)
+     * Converts GameState to JSON via toJson()
+     * Stores in SharedPreferences with puzzle ID key
+     * Updates completion status and best times
+     * Prints confirmation with completion status
+   
+   - loadGame(puzzleId):
+     * Retrieves JSON from SharedPreferences
+     * Converts back to GameState via fromJson()
+     * Returns null if no save exists
+     * Handles parsing errors gracefully
+   
+   COMPLETION TRACKING:
+   - isCompleted(puzzleId): Checks if puzzle is solved
+   - getBestTime(puzzleId): Returns fastest completion time in seconds
+   - getCompletedPuzzleIds(): Lists all solved puzzle IDs
+   
+   STATISTICS & ANALYTICS:
+   - getRealmStats(puzzleIds):
+     * Counts completed vs total puzzles
+     * Calculates completion percentage
+     * Returns Map with 'completed', 'total', 'percentage'
+     * Used for realm progress bars
+   
+   CLEANUP OPERATIONS:
+   - clearSave(puzzleId): Removes saved game (keeps best time and completion status)
+   - getSavedGameIds(): Lists all puzzles with saves
+   - getSaveTimestamp(puzzleId): When game was last saved
 
-KEY PREFIXES:
-- _keyPrefix: 'sudoku_game_' - main save data
-- _completedPrefix: 'sudoku_completed_' - completion flags
-- _bestTimePrefix: 'sudoku_best_time_' - fastest completion times
-
-GAME STATE PERSISTENCE:
-- saveGame(GameState):
-  * Converts GameState to JSON via toJson()
-  * Stores in SharedPreferences with puzzle ID key
-  * Updates completion status and best times
-  * Saves timestamp for last save
-  * Prints confirmation with completion status
-
-- loadGame(puzzleId):
-  * Retrieves JSON from SharedPreferences
-  * Converts back to GameState via fromJson()
-  * Returns null if no save exists
-  * Handles parsing errors gracefully
-
-COMPLETION TRACKING:
-- isCompleted(puzzleId): Checks if puzzle is solved
-- getBestTime(puzzleId): Returns fastest completion time in seconds
-- getCompletedPuzzleIds(): Lists all solved puzzle IDs
-
-STATISTICS & ANALYTICS:
-- getRealmStats(puzzleIds):
-  * Counts completed vs total puzzles
-  * Calculates completion percentage
-  * Returns Map with 'completed', 'total', 'percentage'
-  * Used for realm progress bars
-
-CLEANUP OPERATIONS:
-- clearSave(puzzleId): Removes saved game (keeps best time)
-- getSavedGameIds(): Lists all puzzles with saves
-- getSaveTimestamp(puzzleId): When game was last saved
+2) SETTINGS SERVICE (services/settings_service.dart)
+   PURPOSE: Manages user preferences and app configuration
+   
+   SETTINGS KEYS:
+   - _showMistakesKey: 'settings_show_mistakes'
+   - _showTimerKey: 'settings_show_timer'
+   - _autoNotesKey: 'settings_auto_notes'
+   - _soundEffectsKey: 'settings_sound_effects'
+   - _musicKey: 'settings_music'
+   - _realmBackgroundsKey: 'settings_realm_backgrounds'
+   - _themeKey: 'settings_theme'
+   
+   DEFAULT VALUES:
+   - showMistakes: true
+   - showTimer: true
+   - autoNotes: false
+   - soundEffects: true
+   - music: false
+   - realmBackgrounds: true
+   - theme: 'dark'
+   
+   METHODS:
+   - getShowMistakes()/setShowMistakes(): Show/hide error highlighting
+   - getShowTimer()/setShowTimer(): Show/hide timer display
+   - getAutoNotes()/setAutoNotes(): Enable/disable auto note erasing
+   - getSoundEffects()/setSoundEffects(): Sound effects toggle (not implemented)
+   - getMusic()/setMusic(): Background music toggle (not implemented)
+   - getRealmBackgrounds()/setRealmBackgrounds(): Realm backgrounds toggle (not implemented)
+   - getTheme()/setTheme(): Theme selection (not implemented)
+   - restoreDefaults(): Resets all settings to defaults
+   - getAllSettings(): Returns all settings as Map
 
 =============================================================================
 PUZZLE DATA SYSTEM
@@ -385,11 +498,21 @@ PUZZLE DATA SYSTEM
    - constraints: List<VariantConstraint> - special rules (default empty)
    
    Static Puzzle Collections:
-   - 7 Kropki puzzles (kropki1-kropki7) with full constraint definitions
-   - 24 Classic puzzles (classic1-classic24) - standard Sudoku
-   - allPuzzles: Map<String, PuzzleData> for lookup by ID
+   - Classic puzzles (classic1-classic24) - standard Sudoku
+   - Kropki puzzles (kropki1-kropki7) with full constraint definitions
+   - Thermo puzzles (thermo1-thermoN) with thermometer constraints
+   - German Whispers puzzles (german_whispers1-N) with difference constraints
+   - XV puzzles (xv1-N) with sum constraints
+   - Sandwich puzzles (sandwich1-N) with sandwich constraints
    
-   Utility Methods:
+   Puzzles Class:
+   - Static methods to get puzzle collections:
+     * getClassicPuzzles(): Returns List<PuzzleData>
+     * getKropkiPuzzles(): Returns List<PuzzleData>
+     * getThermoPuzzles(): Returns List<PuzzleData>
+     * getGermanWhispersPuzzles(): Returns List<PuzzleData>
+     * getXvPuzzles(): Returns List<PuzzleData>
+     * getSandwichPuzzles(): Returns List<PuzzleData>
    - getPuzzle(id): Retrieves specific puzzle by ID
    - getAllPuzzleIds(): Lists all available puzzle IDs
 
@@ -398,10 +521,15 @@ PUZZLE DATA SYSTEM
    
    RealmConfig Class:
    - realmPuzzles: Map<String, List<PuzzleData>> - puzzle organization
-     * 'Classic Kingdom': 24 classic puzzles
-     * 'Kropki Forest': 7 Kropki puzzles
+     * 'Classic Kingdom': Classic puzzles
+     * 'Kropki Forest': Kropki puzzles
+     * 'Thermo Desert': Thermo puzzles
+     * 'German Whispers Mountains': German Whispers puzzles
+     * 'XV Sky Islands': XV puzzles
+     * 'Aqua Labyrinth': Sandwich puzzles
    - realmBackgrounds: Map<String, String> - background image paths
    - realmColors: Map<String, Map<String, dynamic>> - color schemes
+     * Each realm has 'primary' and 'accent' colors
    
    Methods:
    - getPuzzlesForRealm(name): Returns List<PuzzleData> for realm
@@ -414,15 +542,17 @@ PUZZLE DATA SYSTEM
    
    RealmTheme Class:
    - realmName: String - realm identifier
-   - primaryColor: Color - main accent (gold for Classic)
-   - accentColor: Color - lighter accent
-   - backgroundColor: Color - cell backgrounds (black for all)
-   - textPrimary: Color - given numbers (realm color)
-   - textSecondary: Color - user numbers (lighter shade)
-   - borderColor: Color - grid borders (realm color)
-   - selectedColor: Color - selected cells (realm with opacity)
-   - highlightedColor: Color - highlighted cells (realm with opacity)
-   - sameNumberColor: Color - same number highlight (realm with opacity)
+   - primaryColor: Color - main accent (for UI elements only)
+   - accentColor: Color - lighter accent (for UI elements only)
+   
+   GRID COLORS (Consistent across all realms for readability):
+   - backgroundColor: Colors.white - Pure white cells
+   - textPrimary: Color(0xFF000000) - Given numbers - pure black
+   - textSecondary: Color(0xFF1e3a8a) - User numbers - dark blue
+   - borderColor: Color(0xFF000000) - Grid borders - pure black
+   - selectedColor: Color(0xFF3b82f6) - Selected cells - bright blue
+   - highlightedColor: Color(0xFFdbeafe) - Highlighted cells - light blue
+   - sameNumberColor: Color(0xFFfef3c7) - Same number highlight - light yellow
    
    Factory:
    - fromRealm(realmName): Creates theme from RealmConfig colors
@@ -431,7 +561,7 @@ PUZZLE DATA SYSTEM
 USER INTERFACE COMPONENTS
 =============================================================================
 
-1) GAME HEADER (game_header.dart)
+1) GAME HEADER (widgets/game_header.dart)
    PURPOSE: Top bar with game info and controls
    
    GameHeader Widget:
@@ -440,16 +570,17 @@ USER INTERFACE COMPONENTS
    - puzzleId: String for title
    - elapsedTime: Duration for timer
    - onRestart/onExit: VoidCallback functions
+   - _showTimer: bool - loaded from SettingsService
    
    UI Components:
    - buildExitButton(): Back navigation with IconButton
    - buildRestartButton(): Reset puzzle with IconButton
-   - buildTimer(): Elapsed time display in MM:SS format
+   - buildTimer(): Elapsed time display in MM:SS format (conditional)
    - buildStarRating(): Difficulty visualization with star icons
    - buildTitle(): Puzzle ID display with styling
    - _formatDuration(): Time formatting helper
 
-2) SUDOKU GRID (sudoku_grid.dart)
+2) SUDOKU GRID (widgets/sudoku_grid.dart)
    PURPOSE: Interactive 9x9 puzzle grid with advanced features
    
    SudokuGridState Class:
@@ -476,19 +607,23 @@ USER INTERFACE COMPONENTS
    - buildCenterNotes(): Center pencil marks with dynamic font sizing
    - Dynamic font sizing based on note count (6-13px)
    
-   KropkiDotsPainter Class:
-   - paint(): Renders constraint dots between cells
-   - White dots: Consecutive numbers (differ by 1)
-   - Black dots: Ratio numbers (2:1 relationship)
-   - Calculates dot positions based on cell coordinates
+   ConstraintPainter Class:
+   - paint(): Renders all constraint types between cells
+   - Kropki dots: White (consecutive) and Black (ratio)
+   - XV markers: X (sum=10) and V (sum=5)
+   - German Whispers: Green lines between cells
+   - Thermo: Grey path with bulb at start
+   - Sandwich: Golden circles with sum values
+   - Calculates positions based on cell coordinates
    - shouldRepaint(): Returns false for performance
 
-3) NUMBER PAD (number_pad.dart)
+3) NUMBER PAD (widgets/number_pad.dart)
    PURPOSE: Input controls and mode switching interface
    
    NumberPadState Class:
    - controller: GameController reference
    - theme: RealmTheme for styling
+   - onShowRules: VoidCallback? - optional rules popup trigger
    - Listener management for controller changes
    
    Layout Structure (3 rows):
@@ -503,25 +638,53 @@ USER INTERFACE COMPONENTS
    - buildMultiButton(): Selection mode toggle with visual feedback
    
    Visual Feedback:
-   - Active mode highlighting (black background, white text)
+   - Active mode highlighting (realm primary color background, black text)
    - Disabled state for unavailable actions (grey)
    - Color preview in coloring mode (shows actual colors)
    - Completion indicators (grey out numbers appearing 9 times)
    - _getColorForNumber(): Maps numbers 1-9 to specific colors
 
-4) RULES POPUP (rules_popup.dart)
+4) RULES POPUP (widgets/rules_popup.dart)
    PURPOSE: Help dialog with comprehensive game instructions
    
    RulesPopup Widget:
    - show(): Static method to display modal dialog
    - buildRulesContent(): Formatted rule sections
    - _buildRuleSection(): Individual rule formatting with title/content
+   - Constraint-specific rules based on constraint types in puzzle
    
    Content Sections:
    - Objective: Fill 9x9 grid with numbers 1-9
    - Rules: Row/column/box constraints
    - How to Play: Mode explanations and controls
+   - Variant Rules: Kropki, Thermo, XV, German Whispers, Sandwich
    - Tips: Strategy hints and UI features
+
+5) COMPLETION DIALOG (widgets/completion_dialogue.dart)
+   PURPOSE: Shows completion celebration and statistics
+   
+   CompletionDialog Widget:
+   - puzzleId, difficulty, elapsedTime, previousBestTime
+   - theme: RealmTheme for styling
+   - Callbacks: onNextPuzzle, onBackToLevels, onPlayAgain
+   
+   Displays:
+   - Completion message
+   - Elapsed time
+   - Best time comparison (if applicable)
+   - Action buttons for next steps
+
+6) LEVEL SELECTION WIDGET (widgets/level_selection_widget.dart)
+   PURPOSE: Reusable puzzle grid builder component
+   
+   PuzzleGridBuilder Widget:
+   - Builds responsive grid of puzzle cards
+   - Shows completion status, progress, best times
+   - Handles expanded puzzle preview
+   
+   KingdomProgressFooter Widget:
+   - Shows overall realm completion progress
+   - Displays completed/total puzzle count
 
 =============================================================================
 DATA FLOW ARCHITECTURE
@@ -539,11 +702,11 @@ NUMBER INPUT FLOW:
 2. Calls GameController.handleNumberInput()
 3. Processes based on currentMode:
    - NORMAL: Sets main number, clears notes
-   - SIDE_NOTES: Toggles corner notes
-   - CENTER_NOTES: Toggles center notes
+   - SIDE_NOTES: Toggles corner notes (keeps center notes)
+   - CENTER_NOTES: Toggles center notes (keeps side notes)
    - COLORING: Sets background color
 4. Creates Action for undo/redo
-5. If main number: calls eraseNotesInRelatedCells()
+5. If main number and auto-notes enabled: calls eraseNotesInRelatedCells()
 6. Calls validateGrid() → checks conflicts
 7. Calls notifyListeners() → UI updates
 
@@ -559,12 +722,22 @@ PERSISTENCE FLOW:
 2. SaveService.saveGame() → SharedPreferences
 3. Load: JSON string → fromJson() → GameState
 4. Completion tracking and best times updated
+5. Completed puzzles: Grid cleared, status preserved
 
 VALIDATION FLOW:
 1. Every number change triggers validateGrid()
-2. Check cell against row, column, 3x3 box
-3. Mark conflicts with isError flag
-4. UI shows red borders for invalid cells
+2. Checks SettingsService.getShowMistakes()
+3. Check cell against row, column, 3x3 box
+4. Mark conflicts with isError flag
+5. UI shows red borders for invalid cells
+6. If no errors and filled: Check completion
+
+SETTINGS FLOW:
+1. SettingsScreen loads all settings from SettingsService
+2. User toggles setting → SettingsService.setX()
+3. SharedPreferences updated
+4. GameController reads settings when needed (async)
+5. UI updates based on setting values
 
 =============================================================================
 ADVANCED FEATURES & ALGORITHMS
@@ -578,11 +751,12 @@ DRAG SELECTION ALGORITHM:
 - Efficient Set operations for cell tracking
 
 AUTO NOTE ERASING ALGORITHM:
-- When placing number, removes conflicting notes
+- When placing number, removes conflicting notes (if enabled)
 - Affects all cells in same row, column, 3x3 box
 - Creates grouped actions for atomic undo/redo
 - Maintains note consistency automatically
 - Prevents invalid note states
+- Respects user preference (SettingsService.getAutoNotes())
 
 ACTION GROUPING SYSTEM:
 - Related actions share same groupId (timestamp-based)
@@ -595,16 +769,21 @@ VARIANT CONSTRAINT RENDERING:
 - Kropki dots between cells with special rules
 - White dots: Adjacent numbers differ by 1
 - Black dots: Adjacent numbers in 2:1 ratio
-- Custom painter renders dots over grid
+- XV markers: X (sum=10) and V (sum=5)
+- German Whispers: Green lines (diff >= 5)
+- Thermo: Grey path with bulb (increasing values)
+- Sandwich: Golden circles with sum values
+- Custom painter renders all constraints over grid
 - Extensible system for future constraint types
 
 VISUAL FEEDBACK SYSTEM:
-- Real-time error highlighting (red borders)
+- Real-time error highlighting (red borders, if enabled)
 - Selection highlighting (blue backgrounds)
 - Related cell highlighting (light blue)
 - Completion indicators (grey numbers)
 - Color coding for organization
-- Realm-specific theming
+- Realm-specific theming for UI elements
+- Consistent grid colors across all realms
 
 PERFORMANCE OPTIMIZATIONS:
 - RepaintBoundary around grid for isolated repaints
@@ -613,6 +792,7 @@ PERFORMANCE OPTIMIZATIONS:
 - Minimal notifyListeners() calls
 - Lazy loading of saved games
 - Cached puzzle data
+- shouldRepaint() returns false for constraint painter
 
 =============================================================================
 TECHNICAL SPECIFICATIONS
@@ -620,23 +800,31 @@ TECHNICAL SPECIFICATIONS
 
 DEPENDENCIES (pubspec.yaml):
 - Flutter SDK: >=3.0.0 <4.0.0
-- provider: ^6.0.0 (not currently used, but available)
+- provider: ^6.0.0 (available but not currently used)
 - shared_preferences: ^2.2.0 (persistence)
 
 ASSETS:
 - Custom font: CinzelDecorative (Bold weight)
 - Background images: castle_background.png, castle.jpg
 - Realm images: images/realms/ directory
+  * classic_kingdom.png
+  * kropki_forest.png
+  * thermo_desert.png
+  * german_whispers.png
+  * xv_sky_islands.png
+  * aqua_labyrinth.png
 
 PROJECT STRUCTURE:
 - lib/ - Main application code
+  * controllers/ - Game logic (GameController)
+  * models/ - Data models (GameState, SudokuCell, Action, etc.)
+  * services/ - Persistence and settings (SaveService, SettingsService)
+  * widgets/ - UI components (screens and widgets)
+  * data/ - Puzzle data and realm configuration
+  * utils/ - Utilities (RealmTheme)
 - fonts/ - Custom font files
 - images/ - Background and realm images
 - Platform folders: android/, ios/, web/, windows/, linux/, macos/
-
-EXTERNAL DIRECTORIES (unused at runtime):
-- controllers/, data/, managers/, models/, screens/, services/, utils/, widgets/
-- These contain placeholder files but are not used by the application
 
 =============================================================================
 EXTENSION POINTS & FUTURE ENHANCEMENTS
@@ -644,10 +832,10 @@ EXTENSION POINTS & FUTURE ENHANCEMENTS
 
 NEW CONSTRAINT TYPES:
 1. Add to ConstraintType enum in variant_constraint.dart
-2. Update KropkiDotsPainter for visual rendering
-3. Add validation logic in GameController
+2. Update ConstraintPainter for visual rendering
+3. Add validation logic in GameController (if needed)
 4. Define constraint rules in puzzle data
-5. Examples: KILLER_CAGE, THERMO, ARROW, SANDWICH
+5. Examples: KILLER_CAGE, ARROW, RENBAN, etc.
 
 NEW GAME MODES:
 1. Add to GameMode enum in game_state.dart
@@ -677,12 +865,32 @@ HINT SYSTEM:
 4. Track hint usage in statistics
 5. Different hint types (naked singles, hidden pairs, etc.)
 
-STATISTICS & ACHIEVEMENTS:
-1. Expand SaveService with detailed tracking
-2. Add statistics screen to main menu
-3. Achievement system with unlockables
-4. Progress tracking across realms
-5. Time-based challenges
+VALIDATION FOR VARIANTS:
+1. Add constraint validation in validateGrid()
+2. Check Kropki rules (consecutive/ratio)
+3. Check Thermo rules (increasing values)
+4. Check XV rules (sum constraints)
+5. Check German Whispers rules (difference >= 5)
+6. Check Sandwich rules (sum between 1 and 9)
+
+SOUND & MUSIC:
+1. Implement audio service
+2. Add sound effects for actions
+3. Add background music
+4. Integrate with SettingsService
+5. Volume controls
+
+THEME SYSTEM:
+1. Implement light/dark theme switching
+2. Add theme persistence
+3. Update all UI components
+4. Add theme preview
+
+ACCESSIBILITY:
+1. Screen reader support
+2. High contrast mode
+3. Font size adjustments
+4. Color blind friendly palettes
 
 =============================================================================
 CURRENT STATE SUMMARY
@@ -690,27 +898,32 @@ CURRENT STATE SUMMARY
 
 FULLY IMPLEMENTED & FUNCTIONAL:
 ✅ Complete Sudoku gameplay with all standard features
-✅ Multiple themed realms with progression system
+✅ Multiple themed realms with progression system (6 realms)
 ✅ Advanced input modes (normal, side notes, center notes, coloring)
 ✅ Drag selection and multi-cell operations
 ✅ Comprehensive undo/redo with action grouping
-✅ Auto note erasing when placing numbers
-✅ Real-time validation and error highlighting
+✅ Auto note erasing when placing numbers (user preference)
+✅ Real-time validation and error highlighting (user preference)
 ✅ Complete persistence with save/load/best times
-✅ Kropki dot constraint system with visual rendering
+✅ Multiple variant constraint types (Kropki, Thermo, XV, German Whispers, Sandwich)
 ✅ Professional UI with realm-specific theming
-✅ Timer system with efficient updates
+✅ Timer system with efficient updates (user preference)
 ✅ Completion tracking and statistics
+✅ Settings system for user preferences
+✅ Statistics screen with achievements
 ✅ Custom fonts and themed backgrounds
-✅ 31 total puzzles (7 Kropki + 24 Classic)
+✅ Rules popup with variant-specific instructions
+✅ Completion dialog with best time tracking
 
 READY FOR INTEGRATION:
-- Additional constraint types (Thermo, Arrow, Killer, Sandwich)
+- Additional constraint types (Killer, Arrow, Renban, etc.)
 - Hint system with solving algorithms
-- Achievement and detailed statistics system
+- Variant constraint validation
 - Cloud synchronization and user accounts
 - Multiplayer features and competitions
 - Puzzle editor and community sharing
+- Sound effects and background music
+- Theme switching (light/dark)
 - Accessibility improvements
 - Additional realms and puzzle packs
 

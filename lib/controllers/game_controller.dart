@@ -4,6 +4,7 @@ import '../models/position.dart';
 import '../services/save_service.dart';
 import '../models/sudoku_cell.dart';
 import '../models/action.dart' as game_action;
+import '../services/settings_service.dart';
 
 bool debug = true;
 
@@ -68,7 +69,7 @@ class GameController extends ChangeNotifier {
     notifyListeners(); // Trigger UI rebuild
   }
 
-  void handleNumberInput(int number) {
+  Future<void> handleNumberInput(int number) async {
     print('\n🔢 ========== HANDLE NUMBER INPUT: $number ==========');
     print('Current mode: ${gameState.currentMode}');
     print('Selected cells: ${gameState.selectedCells.length}');
@@ -187,12 +188,20 @@ class GameController extends ChangeNotifier {
       groupedActions.add(action);
       print('  ✅ Action created');
 
-      // 🔥 NEW: If we just set a number (not erasing), auto-erase notes from related cells
+      // 🔥 NEW: If we just set a number (not erasing), auto-erase notes from related cells (if enabled)
       if (actionType == game_action.ActionType.SET_NUMBER &&
           newCell.number != null) {
-        print('  🧹 Auto-erasing note ${newCell.number} from related cells...');
-        final noteEraseActions = eraseNotesInRelatedCells(pos, newCell.number!);
-        groupedActions.addAll(noteEraseActions);
+        // ✅ Check if auto-notes setting is enabled
+        final autoNotes = await SettingsService.getAutoNotes();
+        if (autoNotes) {
+          print(
+              '  🧹 Auto-erasing note ${newCell.number} from related cells...');
+          final noteEraseActions =
+              eraseNotesInRelatedCells(pos, newCell.number!);
+          groupedActions.addAll(noteEraseActions);
+        } else {
+          print('  ⚙️ Auto-erase disabled - keeping notes in related cells');
+        }
       }
     }
 
@@ -209,7 +218,8 @@ class GameController extends ChangeNotifier {
     }
 
     print('====================================================\n');
-    validateGrid();
+
+    await validateGrid();
     updateHighlights();
     notifyListeners();
   }
@@ -291,7 +301,7 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void eraseSelectedCells() {
+  Future<void> eraseSelectedCells() async {
     print('\n🗑️ ========== ERASE SELECTED CELLS ==========');
     print('Selected cells count: ${gameState.selectedCells.length}');
 
@@ -366,7 +376,7 @@ class GameController extends ChangeNotifier {
     }
 
     print('============================================\n');
-    validateGrid();
+    await validateGrid();
     updateHighlights();
     notifyListeners();
   }
@@ -466,8 +476,19 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  void validateGrid() {
+  Future<void> validateGrid() async {
     print('\n🔍 ========== VALIDATE GRID ==========');
+
+    // ✅ Check if we should show mistakes
+    final showMistakes = await SettingsService.getShowMistakes();
+
+    if (!showMistakes) {
+      print('⚙️ Show mistakes is OFF - skipping validation display');
+      // Still check if complete, but don't show errors
+      await _checkIfComplete();
+      print('=====================================\n');
+      return;
+    }
 
     // First, clear all errors
     for (int r = 0; r < 9; r++) {
@@ -535,15 +556,12 @@ class GameController extends ChangeNotifier {
       print('⚠️ Found errors in $errorCount cells');
     } else {
       print('✅ No errors found - grid is valid so far');
-
-      // 🔥 ADD THIS: Check if puzzle is complete
-      _checkIfComplete();
+      await _checkIfComplete();
     }
     print('=====================================\n');
   }
 
-// 🔥 UPDATE THIS METHOD
-  void _checkIfComplete() async {
+  Future<void> _checkIfComplete() async {
     // Don't check if already completed
     if (gameState.isCompleted) return;
 
@@ -628,7 +646,7 @@ class GameController extends ChangeNotifier {
     print('====================================\n');
   }
 
-  void undo() {
+  Future<void> undo() async {
     print('\n↶ ========== UNDO ==========');
     print('Current index: ${gameState.currentActionIndex}');
     print('History size: ${gameState.actionHistory.length}');
@@ -687,12 +705,12 @@ class GameController extends ChangeNotifier {
     print('   New index: ${gameState.currentActionIndex}');
     print('   Can undo: ${canUndo()}, Can redo: ${canRedo()}');
     print('============================\n');
-    validateGrid();
+    await validateGrid();
     updateHighlights();
     notifyListeners();
   }
 
-  void redo() {
+  Future<void> redo() async {
     print('\n↷ ========== REDO ==========');
     print('Current index: ${gameState.currentActionIndex}');
     print('History size: ${gameState.actionHistory.length}');
@@ -751,7 +769,7 @@ class GameController extends ChangeNotifier {
     print('   New index: ${gameState.currentActionIndex}');
     print('   Can undo: ${canUndo()}, Can redo: ${canRedo()}');
     print('============================\n');
-    validateGrid();
+    await validateGrid();
     updateHighlights();
     notifyListeners();
   }

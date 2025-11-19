@@ -134,28 +134,6 @@ class _RealmSelectionScreenState extends State<RealmSelectionScreen> {
                           );
                         },
                       ),
-
-                      // Scroll indicator
-                      Padding(
-                        padding: const EdgeInsets.only(top: 32.0, bottom: 16.0),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.expand_more,
-                              color: Color(0xFFf8f7f6).withOpacity(0.5),
-                              size: 24,
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Scroll for more',
-                              style: TextStyle(
-                                color: Color(0xFFf8f7f6).withOpacity(0.5),
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
                 ),
