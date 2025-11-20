@@ -6,12 +6,14 @@ class RulesPopup extends StatelessWidget {
   final List<ConstraintType> constraintTypes;
   final RealmTheme theme;
   final VoidCallback onClose;
+  final VoidCallback? onGetHint; // ← ADD THIS LINE
 
   const RulesPopup({
     Key? key,
     required this.constraintTypes,
     required this.theme,
     required this.onClose,
+    this.onGetHint, // ← ADD THIS LINE
   }) : super(key: key);
 
   @override
@@ -71,26 +73,65 @@ class RulesPopup extends StatelessWidget {
             // Bottom button
             Padding(
               padding: EdgeInsets.all(24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: onClose,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.primaryColor,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              child: Column(
+                children: [
+                  // Hint button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop(); // Close dialog
+                        if (onGetHint != null) {
+                          onGetHint!(); // Trigger hint
+                        }
+                      },
+                      icon: Icon(Icons.lightbulb_outline, size: 24),
+                      label: Text(
+                        'Get a Hint',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.accentColor,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    'Got it!',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+
+                  SizedBox(height: 12),
+
+                  // Got it button (secondary)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: onClose,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: theme.primaryColor,
+                        side: BorderSide(
+                          color: theme.primaryColor,
+                          width: 2,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Got it!',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
@@ -586,15 +627,13 @@ class RulesPopup extends StatelessWidget {
   }
 
   // Static method to show the popup
-  static void show(
-    BuildContext context,
-    List<ConstraintType> constraintTypes,
-    RealmTheme theme,
-    VoidCallback onClose,
-  ) {
+  static void show(BuildContext context, List<ConstraintType> constraintTypes,
+      RealmTheme theme, VoidCallback onClose,
+      {VoidCallback? onGetHint} // Add this parameter
+      ) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Must click X or button to close
+      barrierDismissible: false,
       builder: (context) => RulesPopup(
         constraintTypes: constraintTypes,
         theme: theme,
@@ -602,6 +641,7 @@ class RulesPopup extends StatelessWidget {
           Navigator.of(context).pop();
           onClose();
         },
+        onGetHint: onGetHint, // Pass it through
       ),
     );
   }

@@ -6,9 +6,10 @@ import 'sudoku_grid.dart';
 import 'number_pad.dart';
 import '../utils/realm_theme.dart';
 import '../widgets/completion_dialogue.dart';
+import '../widgets/hint_explanation_bubble.dart'; // 🔥 NEW
 import '../services/save_service.dart';
 import 'rules_popup.dart';
-import '../data/realm_config.dart'; // 🔥 ADD THIS
+import '../data/realm_config.dart';
 
 class GameScreen extends StatefulWidget {
   final String puzzleId;
@@ -32,6 +33,7 @@ class _GameScreenState extends State<GameScreen> {
   Timer? _timer;
   final ValueNotifier<Duration> _timerNotifier = ValueNotifier(Duration.zero);
   bool _hasShownRules = false;
+  String? _currentHintExplanation; // 🔥 NEW: Track hint explanation
 
   @override
   void initState() {
@@ -84,7 +86,22 @@ class _GameScreenState extends State<GameScreen> {
       () {
         controller.startTimer();
       },
+      onGetHint: () {
+        controller.getHint();
+        // 🔥 NEW: Update hint explanation when hint is received
+        _updateHintExplanation();
+        controller.startTimer();
+      },
     );
+  }
+
+  // 🔥 NEW: Method to update hint explanation from game state
+  void _updateHintExplanation() {
+    setState(() {
+      _currentHintExplanation = controller.gameState.hintCell != null
+          ? controller.gameState.lastHintExplanation
+          : null;
+    });
   }
 
   void _onGameStateChanged() {
@@ -98,7 +115,6 @@ class _GameScreenState extends State<GameScreen> {
 
     final bestTime = await SaveService.getBestTime(widget.puzzleId);
 
-    // Clear the saved game (keep best time)
     await SaveService.clearSave(widget.puzzleId);
     print('🗑️ Cleared saved game for ${widget.puzzleId}');
 
@@ -120,24 +136,19 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  // 🔥 NEW: Handle next puzzle navigation
   void _handleNextPuzzle() {
-    // Get all puzzles for this realm
     final realmPuzzles = RealmConfig.getPuzzlesForRealm(widget.realmName);
 
-    // Find current puzzle index
     final currentIndex =
         realmPuzzles.indexWhere((p) => p.id == widget.puzzleId);
 
     if (currentIndex == -1) {
       print('❌ Current puzzle not found in realm');
-      Navigator.of(context).pop(); // Close game screen
+      Navigator.of(context).pop();
       return;
     }
 
-    // Check if there's a next puzzle
     if (currentIndex >= realmPuzzles.length - 1) {
-      // Last puzzle - show message and go back to levels
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -146,11 +157,10 @@ class _GameScreenState extends State<GameScreen> {
           backgroundColor: theme.primaryColor,
         ),
       );
-      Navigator.of(context).pop(); // Close game screen
+      Navigator.of(context).pop();
       return;
     }
 
-    // Navigate to next puzzle
     final nextPuzzle = realmPuzzles[currentIndex + 1];
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -163,15 +173,12 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  // 🔥 NEW: Handle back to levels
   void _handleBackToLevels() {
-    Navigator.of(context).pop(); // Close game screen
+    Navigator.of(context).pop();
   }
 
-  // 🔥 NEW: Handle play again
   void _handlePlayAgain() {
     controller.restartPuzzle();
-    // Dialog stays open until restart is complete
   }
 
   @override
@@ -202,11 +209,10 @@ class _GameScreenState extends State<GameScreen> {
   Widget build(BuildContext context) {
     return WillPopScope(
         onWillPop: () async {
-          // Save before going back
           print('💾 Saving game before navigation...');
           await controller.saveProgress();
           print('✅ Save complete, allowing navigation');
-          return true; // Allow the pop
+          return true;
         },
         child: Scaffold(
           appBar: null,
@@ -228,20 +234,35 @@ class _GameScreenState extends State<GameScreen> {
                         print('✅ Save complete');
                         Navigator.pop(context);
                       },
-                      onPause: () => controller.pauseTimer(), // ADD THIS LINE
+                      onPause: () => controller.pauseTimer(),
                       theme: theme,
                     );
                   },
                 ),
                 const SizedBox(height: 20),
+                // 🔥 UPDATED: Grid shrinks when hint is shown
                 Expanded(
                   child: RepaintBoundary(
-                    child: SudokuGrid(
-                      controller: controller,
-                      theme: theme,
+                    child: SingleChildScrollView(
+                      reverse: _currentHintExplanation != null,
+                      child: SudokuGrid(
+                        controller: controller,
+                        theme: theme,
+                      ),
                     ),
                   ),
                 ),
+                // 🔥 NEW: Hint explanation bubble (flexible height)
+                if (_currentHintExplanation != null)
+                  HintExplanationBubble(
+                    explanation: _currentHintExplanation,
+                    theme: theme,
+                    onClose: () {
+                      setState(() {
+                        _currentHintExplanation = null;
+                      });
+                    },
+                  ),
                 NumberPad(
                   controller: controller,
                   theme: theme,

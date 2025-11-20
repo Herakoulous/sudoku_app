@@ -5,6 +5,8 @@ import '../services/save_service.dart';
 import '../models/sudoku_cell.dart';
 import '../models/action.dart' as game_action;
 import '../services/settings_service.dart';
+// Add this import at the top of game_controller.dart
+import '../services/hint_service.dart';
 
 bool debug = true;
 
@@ -36,7 +38,52 @@ class GameController extends ChangeNotifier {
   GameController({
     required String puzzleId,
     required int difficulty,
-  }) : gameState = GameState.newGame(puzzleId, difficulty);
+  }) : gameState = GameState.newGame(puzzleId, difficulty) {
+    // Constructor body can be empty or add initialization here
+  }
+
+// ─────────────────────────────────────────────────────────────
+
+// BUG #2: In getHint() method - wrong property names
+// HintResult uses 'cell' (Position object), not 'row' and 'col'
+
+  void clearHint() {
+    if (gameState.hintCell != null) {
+      gameState.clearHint();
+      notifyListeners();
+    }
+  }
+
+  void getHint() {
+    print('\n💡 ========== GET HINT ==========');
+    print('User requested a hint...');
+
+    final hint = HintService.getHint(gameState);
+
+    if (hint == null) {
+      print('❌ No hints available');
+      print('================================\n');
+      return;
+    }
+
+    // Store hint in game state
+    gameState.hintCell = hint.cell;
+    gameState.hintNumber = hint.number;
+    gameState.lastHintExplanation =
+        hint.explanation; // 🔥 NEW: Store explanation
+
+    print('\n✅ HINT FOUND!');
+    print('Type: ${hint.type}');
+    print('Cell: (${hint.cell.row}, ${hint.cell.col})');
+    print('Number: ${hint.number}');
+    print('Explanation: ${hint.explanation}');
+    if (hint.extraInfo != null) {
+      print('Extra Info: ${hint.extraInfo}');
+    }
+    print('================================\n');
+
+    notifyListeners();
+  }
 
   void handleCellTap(int row, int col) {
     final pos = Position(row, col);

@@ -31,10 +31,11 @@ class GameState {
   // Undo/Redo system
   List<game_action.Action> actionHistory;
   int currentActionIndex;
-
+  String? lastHintExplanation;
   // Variant constraints
   List<VariantConstraint> constraints;
-
+  Position? hintCell; // Position of hinted cell (null if no hint)
+  int? hintNumber; // Suggested number (null if no hint)
   GameState({
     required this.difficulty,
     required this.puzzleId,
@@ -49,6 +50,9 @@ class GameState {
     List<game_action.Action>? actionHistory,
     this.currentActionIndex = -1,
     List<VariantConstraint>? constraints,
+    this.hintCell, // ADD THIS
+    this.hintNumber, // ADD THIS
+    this.lastHintExplanation,
   })  : grid = grid ?? GameState._createEmptyGrid(),
         selectedCells = selectedCells ?? <Position>{},
         highlightedCells = highlightedCells ?? <Position>{},
@@ -63,6 +67,13 @@ class GameState {
     return grid.map((row) {
       return row.map((cell) => cell.number ?? 0).toList();
     }).toList();
+  }
+
+  // ADD THIS METHOD to clear hint
+  void clearHint() {
+    hintCell = null;
+    hintNumber = null;
+    lastHintExplanation = null;
   }
 
   // Create empty grid helper
@@ -146,7 +157,6 @@ class GameState {
     return true;
   }
 
-  // JSON serialization methods
   Map<String, dynamic> toJson() {
     return {
       'difficulty': difficulty,
@@ -157,13 +167,20 @@ class GameState {
       'selectionMode': selectionMode.index,
       'elapsedTime': elapsedTime.inSeconds,
       'isPaused': isPaused,
-      'isCompleted': isCompleted, // 🔥 NEW
+      'isCompleted': isCompleted,
       'currentActionIndex': currentActionIndex,
       'actionHistory': actionHistory.map((action) => action.toJson()).toList(),
       'constraints': constraints.map((c) => c.toJson()).toList(),
+      // ADD THESE:
+      'hintCell': hintCell != null
+          ? {'row': hintCell!.row, 'col': hintCell!.col}
+          : null,
+      'hintNumber': hintNumber,
+      'lastHintExplanation': lastHintExplanation,
     };
   }
 
+  // JSON serialization methods
   factory GameState.fromJson(Map<String, dynamic> json) {
     final gridData = json['grid'] as List;
     final grid = gridData
@@ -172,30 +189,38 @@ class GameState {
             .toList())
         .toList();
 
-    // Restore action history
     final actionHistoryData = json['actionHistory'] as List? ?? [];
     final actionHistory = actionHistoryData
         .map((actionJson) => game_action.Action.fromJson(actionJson))
         .toList();
 
-    // Restore constraints
     final constraintsData = json['constraints'] as List? ?? [];
     final constraints = constraintsData
         .map((constraintJson) => VariantConstraint.fromJson(constraintJson))
         .toList();
 
+    // ADD THIS:
+    Position? hintCell;
+    if (json['hintCell'] != null) {
+      final hintCellData = json['hintCell'];
+      hintCell = Position(hintCellData['row'], hintCellData['col']);
+    }
+
     return GameState(
-      difficulty: json['difficulty'],
-      puzzleId: json['puzzleId'],
-      grid: grid,
-      currentMode: GameMode.values[json['currentMode'] ?? 0],
-      selectionMode: SelectionMode.values[json['selectionMode'] ?? 0],
-      elapsedTime: Duration(seconds: json['elapsedTime'] ?? 0),
-      isPaused: json['isPaused'] ?? false,
-      isCompleted: json['isCompleted'] ?? false, // 🔥 NEW
-      currentActionIndex: json['currentActionIndex'] ?? -1,
-      actionHistory: actionHistory,
-      constraints: constraints,
-    );
+        difficulty: json['difficulty'],
+        puzzleId: json['puzzleId'],
+        grid: grid,
+        currentMode: GameMode.values[json['currentMode'] ?? 0],
+        selectionMode: SelectionMode.values[json['selectionMode'] ?? 0],
+        elapsedTime: Duration(seconds: json['elapsedTime'] ?? 0),
+        isPaused: json['isPaused'] ?? false,
+        isCompleted: json['isCompleted'] ?? false, // 🔥 NEW
+        currentActionIndex: json['currentActionIndex'] ?? -1,
+        actionHistory: actionHistory,
+        constraints: constraints,
+        // ADD THESE:
+        hintCell: hintCell,
+        hintNumber: json['hintNumber'],
+        lastHintExplanation: json['lastHintExplanation']);
   }
 }

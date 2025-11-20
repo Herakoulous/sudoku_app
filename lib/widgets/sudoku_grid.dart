@@ -4,16 +4,16 @@ import '../controllers/game_controller.dart';
 import '../models/sudoku_cell.dart';
 import '../models/position.dart';
 import '../models/variant_constraint.dart';
-import '../utils/realm_theme.dart'; // 🔥 ADD THIS
+import '../utils/realm_theme.dart';
 
 class SudokuGrid extends StatefulWidget {
   final GameController controller;
-  final RealmTheme theme; // 🔥 ADD THIS
+  final RealmTheme theme;
 
   const SudokuGrid({
     super.key,
     required this.controller,
-    required this.theme, // 🔥 ADD THIS
+    required this.theme,
   });
 
   @override
@@ -65,7 +65,7 @@ class _SudokuGridState extends State<SudokuGrid> {
                 return buildCell(row, col, cell);
               },
             ),
-            // 🔥 REPLACE THIS SECTION - Overlay: All constraints (rendered on top of grid)
+            // Overlay: All constraints (rendered on top of grid)
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
@@ -85,6 +85,8 @@ class _SudokuGridState extends State<SudokuGrid> {
     if (_draggedCells.length > 1) {
       return;
     }
+    // 🔥 NEW: Clear hint on cell tap
+    widget.controller.clearHint();
     widget.controller.handleCellTap(row, col);
   }
 
@@ -153,6 +155,10 @@ class _SudokuGridState extends State<SudokuGrid> {
         cell.number != null &&
         cell.cellColor != null;
 
+    // 🔥 NEW: Check if this is the hinted cell
+    final isHintedCell = widget.controller.gameState.hintCell?.row == row &&
+        widget.controller.gameState.hintCell?.col == col;
+
     return GestureDetector(
       onTap: () => onCellTap(row, col),
       onPanStart: (details) => onCellDragStart(row, col),
@@ -160,9 +166,9 @@ class _SudokuGridState extends State<SudokuGrid> {
       onPanEnd: (details) => onCellDragEnd(),
       child: Stack(
         children: [
-          // Base container - NO BORDER, just background color
+          // Base container - background color
           Container(
-            color: getCellBackgroundColor(cell),
+            color: getCellBackgroundColor(cell, isHintedCell),
           ),
           // Overlay 1: Normal grid borders
           Positioned.fill(
@@ -174,7 +180,21 @@ class _SudokuGridState extends State<SudokuGrid> {
               ),
             ),
           ),
-          // Overlay 2: Colored thick border (when same number and colored)
+          // Overlay 2: Hint cell border (green highlight)
+          if (isHintedCell)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Color(0xFF4ADE80),
+                      width: 3,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Overlay 3: Colored thick border (when same number and colored)
           if (isSameNumberAndColored)
             Positioned.fill(
               child: IgnorePointer(
@@ -185,7 +205,7 @@ class _SudokuGridState extends State<SudokuGrid> {
                 ),
               ),
             ),
-          // Overlay 3: Error border (if needed)
+          // Overlay 4: Error border (if needed)
           if (cell.isError)
             Positioned.fill(
               child: IgnorePointer(
@@ -198,16 +218,23 @@ class _SudokuGridState extends State<SudokuGrid> {
             ),
           // Content ON TOP of all borders
           Positioned.fill(
-            child: _buildCellContent(cell),
+            child: _buildCellContent(cell, isHintedCell),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCellContent(SudokuCell cell) {
+  Widget _buildCellContent(SudokuCell cell, bool isHintedCell) {
     if (cell.number != null) {
       return buildMainNumber(cell);
+    }
+
+    // 🔥 NEW: Show hint number if cell is hinted, empty, and has a suggestion
+    if (isHintedCell &&
+        widget.controller.gameState.hintNumber != null &&
+        cell.number == null) {
+      return buildHintNumber(widget.controller.gameState.hintNumber!);
     }
 
     final hasSideNotes = cell.sideNotes.isNotEmpty;
@@ -229,6 +256,20 @@ class _SudokuGridState extends State<SudokuGrid> {
     return const SizedBox.expand();
   }
 
+  // 🔥 NEW: Build hint number display
+  Widget buildHintNumber(int number) {
+    return Center(
+      child: Text(
+        number.toString(),
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF4ADE80).withOpacity(0.6), // Semi-transparent green
+        ),
+      ),
+    );
+  }
+
   Widget buildMainNumber(SudokuCell cell) {
     return Center(
       child: Text(
@@ -237,9 +278,8 @@ class _SudokuGridState extends State<SudokuGrid> {
           fontSize: 24,
           fontWeight: FontWeight.bold,
           color: cell.isGiven
-              ? widget
-                  .theme.textPrimary // 🔥 CHANGED: Given numbers in realm color
-              : widget.theme.textSecondary, // 🔥 CHANGED: User numbers lighter
+              ? widget.theme.textPrimary
+              : widget.theme.textSecondary,
         ),
       ),
     );
@@ -273,9 +313,8 @@ class _SudokuGridState extends State<SudokuGrid> {
                 return Text(
                   number.toString(),
                   style: TextStyle(
-                    // 🔥 FIXED - was hardcoded black
                     fontSize: 10,
-                    color: widget.theme.textSecondary, // Dark blue
+                    color: widget.theme.textSecondary,
                     fontWeight: FontWeight.w500,
                     height: 1.0,
                   ),
@@ -333,7 +372,7 @@ class _SudokuGridState extends State<SudokuGrid> {
         notes.join(''),
         style: TextStyle(
           fontSize: fontSize,
-          color: widget.theme.textSecondary, // 🔥 CHANGED
+          color: widget.theme.textSecondary,
           fontWeight: FontWeight.w400,
           height: 1.0,
           letterSpacing: 0,
@@ -342,7 +381,6 @@ class _SudokuGridState extends State<SudokuGrid> {
     );
   }
 
-  // In getCellBorder, replace black with theme color:
   Border getCellBorder(SudokuCell cell, int row, int col) {
     if (cell.isSelected && cell.cellColor != null) {
       return Border.all(width: 4, color: cell.cellColor!);
@@ -355,52 +393,54 @@ class _SudokuGridState extends State<SudokuGrid> {
     return Border(
       top: BorderSide(
         width: row % 3 == 0 ? 2 : 0.5,
-        color: widget.theme.borderColor, // 🔥 CHANGED
+        color: widget.theme.borderColor,
       ),
       left: BorderSide(
         width: col % 3 == 0 ? 2 : 0.5,
-        color: widget.theme.borderColor, // 🔥 CHANGED
+        color: widget.theme.borderColor,
       ),
       right: BorderSide(
         width: col == 8 ? 2 : 0.5,
-        color: widget.theme.borderColor, // 🔥 CHANGED
+        color: widget.theme.borderColor,
       ),
       bottom: BorderSide(
         width: row == 8 ? 2 : 0.5,
-        color: widget.theme.borderColor, // 🔥 CHANGED
+        color: widget.theme.borderColor,
       ),
     );
   }
 
-  // In getCellBackgroundColor, replace blue colors:
-  Color getCellBackgroundColor(SudokuCell cell) {
+  // 🔥 UPDATED: Added isHintedCell parameter
+  Color getCellBackgroundColor(SudokuCell cell, bool isHintedCell) {
     final selectedNumber = widget.controller.getSelectedNumber();
 
     Color color;
 
-    if (cell.isError) {
-      color = Colors.red.shade200; // Keep red for errors
+    // 🔥 NEW: Hinted cell gets green background
+    if (isHintedCell) {
+      color = Color(0xFF4ADE80).withOpacity(0.25); // Light green
+    } else if (cell.isError) {
+      color = Colors.red.shade200;
     } else if (cell.isSelected) {
-      color = widget.theme.selectedColor; // 🔥 CHANGED
+      color = widget.theme.selectedColor;
     } else if (selectedNumber != null &&
         cell.number == selectedNumber &&
         cell.number != null) {
-      color = widget.theme.sameNumberColor; // 🔥 CHANGED
+      color = widget.theme.sameNumberColor;
     } else if (cell.isHighlighted && cell.cellColor != null) {
-      color = widget.theme.highlightedColor; // 🔥 CHANGED
+      color = widget.theme.highlightedColor;
     } else if (cell.isHighlighted) {
-      color = widget.theme.highlightedColor; // 🔥 CHANGED
+      color = widget.theme.highlightedColor;
     } else if (cell.cellColor != null) {
       color = cell.cellColor!;
     } else {
-      color = widget.theme.backgroundColor; // 🔥 CHANGED (was Colors.white)
+      color = widget.theme.backgroundColor;
     }
 
     return color;
   }
 }
 
-/// Custom painter for rendering Kropki dots between cells
 /// Custom painter for rendering all constraint types
 class ConstraintPainter extends CustomPainter {
   final List<VariantConstraint> constraints;
@@ -418,18 +458,15 @@ class ConstraintPainter extends CustomPainter {
 
     print('🎨 Cell size: $cellSize, Dot radius: $dotRadius');
 
-    // 🔥 NEW: Track painted constraints to avoid duplicates
     Set<String> paintedConstraints = {};
 
     for (var constraint in constraints) {
-      // 🔥 NEW: Create unique key for this constraint (order-independent)
       String constraintKey = '';
       if (constraint.type == ConstraintType.KROPKI_WHITE ||
           constraint.type == ConstraintType.KROPKI_BLACK ||
           constraint.type == ConstraintType.XV_X ||
           constraint.type == ConstraintType.XV_V ||
           constraint.type == ConstraintType.GERMAN_WHISPERS) {
-        // For two-cell constraints, create normalized key
         final minRow = constraint.row1 < constraint.row2
             ? constraint.row1
             : constraint.row2;
@@ -445,9 +482,8 @@ class ConstraintPainter extends CustomPainter {
         constraintKey =
             '${constraint.type}_${minRow}_${minCol}_${maxRow}_${maxCol}';
 
-        // Skip if already painted
         if (paintedConstraints.contains(constraintKey)) {
-          print('⏭️ Skipping duplicate: $constraintKey');
+          print('⭐️ Skipping duplicate: $constraintKey');
           continue;
         }
         paintedConstraints.add(constraintKey);
@@ -537,10 +573,8 @@ class ConstraintPainter extends CustomPainter {
       center = Offset(x, y);
     }
 
-    // Draw background that erases grid lines
-    // This needs to be the base background color of the grid
     final bgPaint = Paint()
-      ..color = Colors.white // Use your theme.backgroundColor here if not white
+      ..color = Colors.white
       ..style = PaintingStyle.fill;
 
     final lineEraserSize = cellSize * 0.25;
@@ -554,7 +588,6 @@ class ConstraintPainter extends CustomPainter {
     );
     canvas.drawRRect(bgRect, bgPaint);
 
-    // Draw text
     final textPainter = TextPainter(
       text: TextSpan(
         text: text,
@@ -581,9 +614,8 @@ class ConstraintPainter extends CustomPainter {
 
   void _paintGermanWhispers(
       Canvas canvas, VariantConstraint constraint, double cellSize) {
-    // Draw green line between cells
     final paint = Paint()
-      ..color = Color(0xFF22c55e) // Green
+      ..color = Color(0xFF22c55e)
       ..strokeWidth = cellSize * 0.15
       ..strokeCap = StrokeCap.round;
 
@@ -620,10 +652,9 @@ class ConstraintPainter extends CustomPainter {
 
     final cells = constraint.thermoCells!;
 
-    // Draw path line FIRST (behind the bulb)
     if (cells.length > 1) {
       final linePaint = Paint()
-        ..color = Color(0xFFe5e7eb).withOpacity(0.9) // Lighter grey
+        ..color = Color(0xFFe5e7eb).withOpacity(0.9)
         ..strokeWidth = cellSize * 0.3
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
@@ -643,7 +674,6 @@ class ConstraintPainter extends CustomPainter {
       }
       canvas.drawPath(path, linePaint);
 
-      // Add darker border to path
       final pathBorderPaint = Paint()
         ..color = Color(0xFF9ca3af)
         ..style = PaintingStyle.stroke
@@ -651,24 +681,21 @@ class ConstraintPainter extends CustomPainter {
       canvas.drawPath(path, pathBorderPaint);
     }
 
-    // Draw bulb (circle at first cell) ON TOP
     final bulbCenter = Offset(
       cells[0].col * cellSize + cellSize / 2,
       cells[0].row * cellSize + cellSize / 2,
     );
 
-    // Outer glow
     final glowPaint = Paint()
       ..color = Color(0xFF9ca3af).withOpacity(0.3)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(bulbCenter, cellSize * 0.42, glowPaint);
 
-    // Main bulb fill with gradient effect
     final bulbPaint = Paint()
       ..shader = RadialGradient(
         colors: [
-          Color(0xFFf3f4f6), // Very light grey (center)
-          Color(0xFFe5e7eb), // Light grey (edge)
+          Color(0xFFf3f4f6),
+          Color(0xFFe5e7eb),
         ],
         stops: [0.3, 1.0],
       ).createShader(
@@ -676,14 +703,12 @@ class ConstraintPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(bulbCenter, cellSize * 0.38, bulbPaint);
 
-    // Bulb border (thicker and darker)
     final borderPaint = Paint()
       ..color = Color(0xFF6b7280)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     canvas.drawCircle(bulbCenter, cellSize * 0.38, borderPaint);
 
-    // Add highlight/shine effect on bulb
     final shinePaint = Paint()
       ..color = Colors.white.withOpacity(0.6)
       ..style = PaintingStyle.fill;
@@ -705,7 +730,6 @@ class ConstraintPainter extends CustomPainter {
     Offset position;
 
     if (constraint.sandwichRow != null) {
-      // Row sandwich - draw on left or right
       final row = constraint.sandwichRow!;
       final isLeft = constraint.col1 == -1;
       position = Offset(
@@ -713,7 +737,6 @@ class ConstraintPainter extends CustomPainter {
         row * cellSize + cellSize / 2,
       );
     } else {
-      // Column sandwich - draw on top or bottom
       final col = constraint.sandwichCol!;
       final isTop = constraint.row1 == -1;
       position = Offset(
@@ -724,32 +747,28 @@ class ConstraintPainter extends CustomPainter {
 
     final radius = cellSize * 0.35;
 
-    // Outer glow/shadow
     final shadowPaint = Paint()
       ..color = Color(0xFFf59e0b).withOpacity(0.3)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(position, radius + 3, shadowPaint);
 
-    // Main circle with gradient
     final bgPaint = Paint()
       ..shader = RadialGradient(
         colors: [
-          Color(0xFFfde047), // Bright yellow (center)
-          Color(0xFFfbbf24), // Golden yellow (edge)
+          Color(0xFFfde047),
+          Color(0xFFfbbf24),
         ],
         stops: [0.4, 1.0],
       ).createShader(Rect.fromCircle(center: position, radius: radius))
       ..style = PaintingStyle.fill;
     canvas.drawCircle(position, radius, bgPaint);
 
-    // Thicker border with darker gold
     final borderPaint = Paint()
-      ..color = Color(0xFFd97706) // Darker orange-gold
+      ..color = Color(0xFFd97706)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     canvas.drawCircle(position, radius, borderPaint);
 
-    // Inner highlight circle
     final innerHighlight = Paint()
       ..color = Color(0xFFfef3c7).withOpacity(0.5)
       ..style = PaintingStyle.fill;
@@ -759,14 +778,13 @@ class ConstraintPainter extends CustomPainter {
       innerHighlight,
     );
 
-    // Draw number with better styling
     final textPainter = TextPainter(
       text: TextSpan(
         text: sum.toString(),
         style: TextStyle(
-          color: Color(0xFF78350f), // Dark brown for contrast
+          color: Color(0xFF78350f),
           fontSize: cellSize * 0.28,
-          fontWeight: FontWeight.w900, // Extra bold
+          fontWeight: FontWeight.w900,
           shadows: [
             Shadow(
               color: Colors.white.withOpacity(0.5),
