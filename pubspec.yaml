@@ -1,5 +1,6 @@
-name: sudoku_app
-description: A CTC-style Sudoku app
+name: sudoku_realms
+
+description: A professional Sudoku game with multiple themed realms and variant puzzles.
 
 publish_to: 'none'
 
@@ -8,26 +9,37 @@ version: 1.0.0+1
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
-flutter:
-  uses-material-design: true
-  fonts:
-  - family: CinzelDecorative
-    fonts:
-      - asset: fonts/CinzelDecorative-Bold.ttf
-        weight: 700
-  assets:
-    - images/castle_background.png
-    - images/castle.jpg
-    - images/realms/
-
 dependencies:
   flutter:
     sdk: flutter
   provider: ^6.0.0  
   shared_preferences: ^2.2.0
+  audioplayers: ^5.2.1
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
 
+flutter:
+  uses-material-design: true
+  
+  fonts:
+    - family: CinzelDecorative
+      fonts:
+        - asset: fonts/CinzelDecorative-Bold.ttf
+          weight: 700
+  
+  assets:
+    - images/castle_background.png
+    - images/castle.jpg
+    - images/realms/
+    - assets/audio/
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "images/icon/icon.png"
+  min_sdk_android: 21

@@ -85,7 +85,7 @@ class _SudokuGridState extends State<SudokuGrid> {
     if (_draggedCells.length > 1) {
       return;
     }
-    // 🔥 NEW: Clear hint on cell tap
+    // 🔥 Clear hint on cell tap
     widget.controller.clearHint();
     widget.controller.handleCellTap(row, col);
   }
@@ -155,9 +155,45 @@ class _SudokuGridState extends State<SudokuGrid> {
         cell.number != null &&
         cell.cellColor != null;
 
-    // 🔥 NEW: Check if this is the hinted cell
-    final isHintedCell = widget.controller.gameState.hintCell?.row == row &&
-        widget.controller.gameState.hintCell?.col == col;
+    // 🔥 FIX: Only check hint if hintCell is not null
+    final hintCell = widget.controller.gameState.hintCell;
+    final isHintedCell =
+        hintCell != null && hintCell.row == row && hintCell.col == col;
+
+    // 🔥 FIX: Only check highlights if the sets are not null
+    final hintHighlightRows = widget.controller.gameState.hintHighlightRows;
+    final hintHighlightColumns =
+        widget.controller.gameState.hintHighlightColumns;
+    final hintHighlightCells = widget.controller.gameState.hintHighlightCells;
+    final hintHighlightNumbers =
+        widget.controller.gameState.hintHighlightNumbers;
+
+    final isRowHighlighted =
+        hintHighlightRows?.contains(Position(row, col)) ?? false;
+    final isColHighlighted =
+        hintHighlightColumns?.contains(Position(row, col)) ?? false;
+    final isCellHighlighted =
+        hintHighlightCells?.contains(Position(row, col)) ?? false;
+
+    // 🔥 FIX: Clean null-safe number highlighting
+    bool isNumberHighlighted = false;
+
+    if (!isHintedCell &&
+        cell.number != null &&
+        hintHighlightNumbers != null &&
+        hintCell != null) {
+      // Only highlight numbers that are in the SAME REGION as the hinted cell
+      // AND are part of the restricting numbers
+      final isInSameRow = row == hintCell.row;
+      final isInSameCol = col == hintCell.col;
+      final isInSameBox =
+          (row ~/ 3 == hintCell.row ~/ 3) && (col ~/ 3 == hintCell.col ~/ 3);
+
+      final isInSameRegion = isInSameRow || isInSameCol || isInSameBox;
+
+      isNumberHighlighted =
+          isInSameRegion && hintHighlightNumbers.contains(cell.number);
+    }
 
     return GestureDetector(
       onTap: () => onCellTap(row, col),
@@ -168,7 +204,8 @@ class _SudokuGridState extends State<SudokuGrid> {
         children: [
           // Base container - background color
           Container(
-            color: getCellBackgroundColor(cell, isHintedCell),
+            color: getCellBackgroundColor(cell, isHintedCell, isRowHighlighted,
+                isColHighlighted, isCellHighlighted, isNumberHighlighted),
           ),
           // Overlay 1: Normal grid borders
           Positioned.fill(
@@ -180,21 +217,7 @@ class _SudokuGridState extends State<SudokuGrid> {
               ),
             ),
           ),
-          // Overlay 2: Hint cell border (green highlight)
-          if (isHintedCell)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Color(0xFF4ADE80),
-                      width: 3,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          // Overlay 3: Colored thick border (when same number and colored)
+          // Overlay 2: Colored thick border (when same number and colored)
           if (isSameNumberAndColored)
             Positioned.fill(
               child: IgnorePointer(
@@ -205,7 +228,7 @@ class _SudokuGridState extends State<SudokuGrid> {
                 ),
               ),
             ),
-          // Overlay 4: Error border (if needed)
+          // Overlay 3: Error border (if needed)
           if (cell.isError)
             Positioned.fill(
               child: IgnorePointer(
@@ -218,23 +241,23 @@ class _SudokuGridState extends State<SudokuGrid> {
             ),
           // Content ON TOP of all borders
           Positioned.fill(
-            child: _buildCellContent(cell, isHintedCell),
+            child: _buildCellContent(cell, isHintedCell, isNumberHighlighted),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCellContent(SudokuCell cell, bool isHintedCell) {
+  Widget _buildCellContent(
+      SudokuCell cell, bool isHintedCell, bool isNumberHighlighted) {
     if (cell.number != null) {
-      return buildMainNumber(cell);
+      return buildMainNumber(cell, isNumberHighlighted);
     }
 
-    // 🔥 NEW: Show hint number if cell is hinted, empty, and has a suggestion
-    if (isHintedCell &&
-        widget.controller.gameState.hintNumber != null &&
-        cell.number == null) {
-      return buildHintNumber(widget.controller.gameState.hintNumber!);
+    // 🔥 Show hint number if cell is hinted, empty, and has a suggestion
+    final hintNumber = widget.controller.gameState.hintNumber;
+    if (isHintedCell && hintNumber != null && cell.number == null) {
+      return buildHintNumber(hintNumber);
     }
 
     final hasSideNotes = cell.sideNotes.isNotEmpty;
@@ -256,7 +279,6 @@ class _SudokuGridState extends State<SudokuGrid> {
     return const SizedBox.expand();
   }
 
-  // 🔥 NEW: Build hint number display
   Widget buildHintNumber(int number) {
     return Center(
       child: Text(
@@ -264,22 +286,30 @@ class _SudokuGridState extends State<SudokuGrid> {
         style: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.bold,
-          color: Color(0xFF4ADE80).withOpacity(0.6), // Semi-transparent green
+          color: Color(0xFF4ADE80).withOpacity(0.6),
         ),
       ),
     );
   }
 
-  Widget buildMainNumber(SudokuCell cell) {
+  Widget buildMainNumber(SudokuCell cell, bool isNumberHighlighted) {
+    Color numberColor;
+
+    if (isNumberHighlighted) {
+      numberColor = Color(0xFFFBBF24); // Yellow for highlighted numbers
+    } else if (cell.isGiven) {
+      numberColor = widget.theme.textPrimary;
+    } else {
+      numberColor = widget.theme.textSecondary;
+    }
+
     return Center(
       child: Text(
         cell.number.toString(),
         style: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.bold,
-          color: cell.isGiven
-              ? widget.theme.textPrimary
-              : widget.theme.textSecondary,
+          color: numberColor,
         ),
       ),
     );
@@ -410,34 +440,63 @@ class _SudokuGridState extends State<SudokuGrid> {
     );
   }
 
-  // 🔥 UPDATED: Added isHintedCell parameter
-  Color getCellBackgroundColor(SudokuCell cell, bool isHintedCell) {
+  // 🔥 FIX: Simplified logic - no debug prints, clear priority order
+  Color getCellBackgroundColor(
+      SudokuCell cell,
+      bool isHintedCell,
+      bool isRowHighlighted,
+      bool isColHighlighted,
+      bool isCellHighlighted,
+      bool isNumberHighlighted) {
     final selectedNumber = widget.controller.getSelectedNumber();
 
-    Color color;
-
-    // 🔥 NEW: Hinted cell gets green background
+    // 🔥 PRIORITY ORDER (top to bottom):
+    // 1. Hint highlighting (highest priority)
     if (isHintedCell) {
-      color = Color(0xFF4ADE80).withOpacity(0.25); // Light green
-    } else if (cell.isError) {
-      color = Colors.red.shade200;
-    } else if (cell.isSelected) {
-      color = widget.theme.selectedColor;
-    } else if (selectedNumber != null &&
-        cell.number == selectedNumber &&
-        cell.number != null) {
-      color = widget.theme.sameNumberColor;
-    } else if (cell.isHighlighted && cell.cellColor != null) {
-      color = widget.theme.highlightedColor;
-    } else if (cell.isHighlighted) {
-      color = widget.theme.highlightedColor;
-    } else if (cell.cellColor != null) {
-      color = cell.cellColor!;
-    } else {
-      color = widget.theme.backgroundColor;
+      return Color.fromARGB(255, 3, 181, 208); // Cyan for hinted cell
     }
 
-    return color;
+    if (isRowHighlighted ||
+        isColHighlighted ||
+        isCellHighlighted ||
+        isNumberHighlighted) {
+      return Color(0xFF4ADE80); // Green for hint highlights
+    }
+
+    // 2. Error state
+    if (cell.isError) {
+      return Colors.red.shade200;
+    }
+
+    // 3. Selection state
+    if (cell.isSelected) {
+      return widget.theme.selectedColor;
+    }
+
+    // 4. Same number highlighting
+    if (selectedNumber != null &&
+        cell.number == selectedNumber &&
+        cell.number != null) {
+      return widget.theme.sameNumberColor;
+    }
+
+    // 5. Normal highlighting with color
+    if (cell.isHighlighted && cell.cellColor != null) {
+      return widget.theme.highlightedColor;
+    }
+
+    // 6. Normal highlighting without color
+    if (cell.isHighlighted) {
+      return widget.theme.highlightedColor;
+    }
+
+    // 7. Cell color (if set)
+    if (cell.cellColor != null) {
+      return cell.cellColor!;
+    }
+
+    // 8. Default background
+    return widget.theme.backgroundColor;
   }
 }
 

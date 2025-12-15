@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../controllers/game_controller.dart';
+import '../services/settings_service.dart';
 import 'game_header.dart';
 import 'sudoku_grid.dart';
 import 'number_pad.dart';
 import '../utils/realm_theme.dart';
 import '../widgets/completion_dialogue.dart';
-import '../widgets/hint_explanation_bubble.dart'; // 🔥 NEW
+import '../widgets/hint_explanation_bubble.dart';
 import '../services/save_service.dart';
 import 'rules_popup.dart';
 import '../data/realm_config.dart';
+import '../widgets/hint_button.dart';
+import '../widgets/hint_loading_indicator.dart';
+import '../services/hodoku_hint_service.dart';
 
 class GameScreen extends StatefulWidget {
   final String puzzleId;
@@ -29,28 +33,102 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   late GameController controller;
-  late RealmTheme theme;
+  late RealmTheme theme = RealmTheme.fromRealmSync(widget.realmName);
   Timer? _timer;
   final ValueNotifier<Duration> _timerNotifier = ValueNotifier(Duration.zero);
   bool _hasShownRules = false;
-  String? _currentHintExplanation; // 🔥 NEW: Track hint explanation
+  String? _currentHintExplanation;
+  bool _showHintButton = true;
+  bool _isLoadingHint = false;
+  String _resolvedTheme = 'dark';
+
+  Future<void> _loadTheme() async {
+    final loadedTheme = await RealmTheme.fromRealm(widget.realmName);
+    final resolvedTheme = await SettingsService.getResolvedTheme(context);
+    setState(() {
+      theme = loadedTheme;
+      _resolvedTheme = resolvedTheme;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    theme = RealmTheme.fromRealm(widget.realmName);
+    _loadTheme();
     controller = GameController(
       puzzleId: widget.puzzleId,
       difficulty: widget.difficulty,
     );
 
+    SaveService.startSession(widget.puzzleId);
     controller.addListener(_onGameStateChanged);
     _loadSavedGame();
     _startTimer();
 
+    if (_isClassicPuzzle) {
+      HoDoKuHintService.warmUpServer();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showRulesIfNeeded();
     });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _timerNotifier.dispose();
+    controller.removeListener(_onGameStateChanged);
+    controller.saveProgress();
+    SaveService.endSession(widget.puzzleId);
+    controller.dispose();
+    super.dispose();
+  }
+
+  void _onHintButtonPressed() async {
+    setState(() {
+      _showHintButton = false;
+      _isLoadingHint = true;
+    });
+
+    await controller.getHint();
+
+    if (mounted) {
+      setState(() {
+        _isLoadingHint = false;
+      });
+    }
+  }
+
+  void _onGameStateChanged() {
+    print('📢 _onGameStateChanged called');
+
+    if (controller.gameState.isCompleted && mounted) {
+      _checkAndShowCompletion();
+    }
+
+    if (mounted) {
+      print('🔄 Calling _updateHintExplanation');
+      _updateHintExplanation();
+    }
+  }
+
+  void _updateHintExplanation() {
+    print('🔄 _updateHintExplanation called');
+    setState(() {
+      _currentHintExplanation = controller.gameState.lastHintExplanation;
+      _isLoadingHint = false;
+
+      if (_currentHintExplanation == null) {
+        _showHintButton = true;
+      } else {
+        _showHintButton = false;
+      }
+    });
+  }
+
+  bool get _isClassicPuzzle {
+    return widget.realmName == 'Classic Kingdom';
   }
 
   void _showRulesIfNeeded() {
@@ -87,36 +165,19 @@ class _GameScreenState extends State<GameScreen> {
         controller.startTimer();
       },
       onGetHint: () {
+        SaveService.incrementHintsUsed();
         controller.getHint();
-        // 🔥 NEW: Update hint explanation when hint is received
         _updateHintExplanation();
         controller.startTimer();
       },
     );
   }
 
-  // 🔥 NEW: Method to update hint explanation from game state
-  void _updateHintExplanation() {
-    setState(() {
-      _currentHintExplanation = controller.gameState.hintCell != null
-          ? controller.gameState.lastHintExplanation
-          : null;
-    });
-  }
-
-  void _onGameStateChanged() {
-    if (controller.gameState.isCompleted && mounted) {
-      _checkAndShowCompletion();
-    }
-  }
-
   Future<void> _checkAndShowCompletion() async {
     if (!controller.gameState.isCompleted) return;
 
     final bestTime = await SaveService.getBestTime(widget.puzzleId);
-
     await SaveService.clearSave(widget.puzzleId);
-    print('🗑️ Cleared saved game for ${widget.puzzleId}');
 
     if (!mounted) return;
 
@@ -138,12 +199,10 @@ class _GameScreenState extends State<GameScreen> {
 
   void _handleNextPuzzle() {
     final realmPuzzles = RealmConfig.getPuzzlesForRealm(widget.realmName);
-
     final currentIndex =
         realmPuzzles.indexWhere((p) => p.id == widget.puzzleId);
 
     if (currentIndex == -1) {
-      print('❌ Current puzzle not found in realm');
       Navigator.of(context).pop();
       return;
     }
@@ -181,16 +240,6 @@ class _GameScreenState extends State<GameScreen> {
     controller.restartPuzzle();
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _timerNotifier.dispose();
-    controller.removeListener(_onGameStateChanged);
-    controller.saveProgress();
-    controller.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadSavedGame() async {
     await controller.loadProgress();
     _timerNotifier.value = controller.gameState.elapsedTime;
@@ -205,72 +254,95 @@ class _GameScreenState extends State<GameScreen> {
     });
   }
 
+  Color _getBackgroundColor() {
+    return _resolvedTheme == 'dark' ? Color(0xFF0A101A) : Color(0xFFF5F5F5);
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-        onWillPop: () async {
-          print('💾 Saving game before navigation...');
-          await controller.saveProgress();
-          print('✅ Save complete, allowing navigation');
-          return true;
-        },
-        child: Scaffold(
-          appBar: null,
-          backgroundColor: Color(0xFF0A101A),
-          body: SafeArea(
-            child: Column(
-              children: [
-                ValueListenableBuilder<Duration>(
-                  valueListenable: _timerNotifier,
-                  builder: (context, elapsedTime, child) {
-                    return GameHeader(
-                      difficulty: widget.difficulty,
-                      puzzleId: widget.puzzleId,
-                      elapsedTime: elapsedTime,
-                      onRestart: () => controller.restartPuzzle(),
-                      onExit: () async {
-                        print('💾 Saving game before exit...');
-                        await controller.saveProgress();
-                        print('✅ Save complete');
-                        Navigator.pop(context);
-                      },
-                      onPause: () => controller.pauseTimer(),
-                      theme: theme,
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-                // 🔥 UPDATED: Grid shrinks when hint is shown
-                Expanded(
-                  child: RepaintBoundary(
-                    child: SingleChildScrollView(
-                      reverse: _currentHintExplanation != null,
-                      child: SudokuGrid(
-                        controller: controller,
+      onWillPop: () async {
+        await controller.saveProgress();
+        return true;
+      },
+      child: Scaffold(
+        appBar: null,
+        backgroundColor: _getBackgroundColor(),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  ValueListenableBuilder<Duration>(
+                    valueListenable: _timerNotifier,
+                    builder: (context, elapsedTime, child) {
+                      return GameHeader(
+                        difficulty: widget.difficulty,
+                        puzzleId: widget.puzzleId,
+                        elapsedTime: elapsedTime,
+                        onRestart: () => controller.restartPuzzle(),
+                        onExit: () async {
+                          await controller.saveProgress();
+                          Navigator.pop(context);
+                        },
+                        onPause: () => controller.pauseTimer(),
                         theme: theme,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        controller.clearHint();
+                        setState(() {
+                          _currentHintExplanation = null;
+                          _showHintButton = true;
+                          _isLoadingHint = false;
+                        });
+                      },
+                      child: RepaintBoundary(
+                        child: SingleChildScrollView(
+                          reverse:
+                              _currentHintExplanation != null || _isLoadingHint,
+                          child: SudokuGrid(
+                            controller: controller,
+                            theme: theme,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                // 🔥 NEW: Hint explanation bubble (flexible height)
-                if (_currentHintExplanation != null)
-                  HintExplanationBubble(
-                    explanation: _currentHintExplanation,
+                  if (_isLoadingHint) HintLoadingIndicator(theme: theme),
+                  if (_currentHintExplanation != null && !_isLoadingHint)
+                    HintExplanationBubble(
+                      explanation: _currentHintExplanation,
+                      theme: theme,
+                      onClose: () {
+                        setState(() {
+                          _currentHintExplanation = null;
+                          _showHintButton = true;
+                        });
+                      },
+                      hintType: controller.gameState.lastHintType,
+                    ),
+                  NumberPad(
+                    controller: controller,
                     theme: theme,
-                    onClose: () {
-                      setState(() {
-                        _currentHintExplanation = null;
-                      });
-                    },
+                    onShowRules: _showRulesPopup,
                   ),
-                NumberPad(
-                  controller: controller,
+                ],
+              ),
+              if (_isClassicPuzzle)
+                HintButton(
                   theme: theme,
-                  onShowRules: _showRulesPopup,
+                  onPressed: _onHintButtonPressed,
+                  isVisible: _showHintButton,
                 ),
-              ],
-            ),
+            ],
           ),
-        ));
+        ),
+      ),
+    );
   }
 }

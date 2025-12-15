@@ -61,7 +61,7 @@ class _SudokuRealmsAppState extends State<SudokuRealmsApp> {
     await precacheImage(AssetImage('images/castle.jpg'), context);
 
     final realmBackgrounds = [
-      'images/realms/classic.png',
+      'images/realms/classic_kingdom.png',
       'images/realms/kropki_forest.png',
       'images/realms/thermo_desert.png',
       'images/realms/german_whispers.png',

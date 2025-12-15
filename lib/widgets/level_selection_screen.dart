@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/puzzles.dart';
 import '../services/save_service.dart';
+import '../services/settings_service.dart';
 import '../models/game_state.dart';
 import '../utils/realm_theme.dart';
 import 'level_selection_widget.dart';
@@ -24,7 +25,7 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
   Map<String, GameState?> savedGames = {};
   Map<String, int?> bestTimes = {};
   Map<String, bool> completedStatus = {};
-  // bool _isInitialized = false;
+  String _resolvedTheme = 'dark';
 
   List<PuzzleData> get puzzleList => widget.puzzles.cast<PuzzleData>();
 
@@ -32,18 +33,16 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
   void initState() {
     super.initState();
     print('🔍 LevelSelectionScreen initialized');
-    print('🔍 Realm name: ${widget.realmName}');
-    print('🔍 Puzzles received: ${widget.puzzles.length}');
-    print('🔍 Puzzle list: ${puzzleList.length}');
-    if (puzzleList.isNotEmpty) {
-      print('🔍 First puzzle: ${puzzleList[0].id}');
-    }
+    _loadTheme();
     _loadSavedGames();
   }
 
-  // =============================================================================
-  // LOGIC METHODS
-  // =============================================================================
+  Future<void> _loadTheme() async {
+    final theme = await SettingsService.getResolvedTheme(context);
+    if (mounted) {
+      setState(() => _resolvedTheme = theme);
+    }
+  }
 
   Future<void> _loadSavedGames() async {
     print('🔄 Loading saved games...');
@@ -56,17 +55,14 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
         bestTimes[puzzle.id] = bestTime;
       }
 
-      // Load completion status
       final isCompleted = await SaveService.isCompleted(puzzle.id);
       completedStatus[puzzle.id] = isCompleted;
     }
     print('🔄 Saved games loaded. Calling setState...');
     setState(() {});
-    print('🔄 setState called.');
   }
 
   void _togglePuzzle(int index) {
-    // 🔥 Always show expanded grid, no dialog
     setState(() {
       if (expandedPuzzleIndex == index) {
         expandedPuzzleIndex = null;
@@ -97,7 +93,7 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
 
   int _getUnlockedCount() {
     final completedCount = _getCompletedCount();
-    return 4 + completedCount; // Start with 4, add 1 per completion
+    return 52 + completedCount;
   }
 
   Future<void> _navigateToGame(PuzzleData puzzle) async {
@@ -109,9 +105,7 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
         'realmName': widget.realmName,
       },
     );
-    // Wait for the game screen to fully dispose and save
     await Future.delayed(Duration(milliseconds: 100));
-    // Reload data after returning from game
     await _loadSavedGames();
   }
 
@@ -125,79 +119,89 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
         'realmName': widget.realmName,
       },
     );
-    // Wait for the game screen to fully dispose and save
     await Future.delayed(Duration(milliseconds: 100));
-    // Reload data after returning from game
     await _loadSavedGames();
   }
 
-  // =============================================================================
-  // BUILD METHOD
-  // =============================================================================
+  Color _getBackgroundColor() {
+    return _resolvedTheme == 'dark' ? Color(0xFF0A101A) : Color(0xFFF5F5F5);
+  }
+
+  Color _getOverlayColor() {
+    return _resolvedTheme == 'dark'
+        ? Color(0xFF0A101A).withOpacity(0.7)
+        : Colors.white.withOpacity(0.8);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = RealmTheme.fromRealm(widget.realmName);
+    final theme = RealmTheme.fromRealmSync(widget.realmName);
 
     return Scaffold(
       body: Stack(
         children: [
           // Background
           Positioned.fill(
-            child: Image.asset(
-              'images/classic_kingdom_background.jpg',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFF0A101A),
-                        Color(0xFF1a2030),
-                      ],
-                    ),
+            child: Container(
+              color: _getBackgroundColor(),
+              child: _resolvedTheme == 'dark'
+                  ? Image.asset(
+                      'images/classic_kingdom_background.jpg',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0xFF0A101A),
+                                Color(0xFF1a2030),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : null,
+            ),
+          ),
+
+          // Gradient overlays (only for dark mode)
+          if (_resolvedTheme == 'dark') ...[
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF0A101A).withOpacity(0.7),
+                      Color(0xFF0A101A).withOpacity(0.4),
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, 0.3, 1.0],
                   ),
-                );
-              },
-            ),
-          ),
-
-          // Gradient overlays
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF0A101A).withOpacity(0.7),
-                    Color(0xFF0A101A).withOpacity(0.4),
-                    Colors.transparent,
-                  ],
-                  stops: [0.0, 0.3, 1.0],
                 ),
               ),
             ),
-          ),
-
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Color(0xFF0A101A).withOpacity(0.8),
-                    Color(0xFF0A101A).withOpacity(0.4),
-                    Colors.transparent,
-                  ],
-                  stops: [0.0, 0.3, 1.0],
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Color(0xFF0A101A).withOpacity(0.8),
+                      Color(0xFF0A101A).withOpacity(0.4),
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, 0.3, 1.0],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
 
           // Content
           SafeArea(
@@ -209,7 +213,6 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
                       horizontal: 16.0, vertical: 8.0),
                   child: Row(
                     children: [
-                      // Back button
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
                         icon: Icon(
@@ -225,26 +228,29 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: _resolvedTheme == 'dark'
+                                ? Colors.white
+                                : Colors.black87,
                             letterSpacing: 2,
-                            shadows: [
-                              Shadow(
-                                blurRadius: 8.0,
-                                color: Colors.white.withOpacity(0.7),
-                                offset: Offset(0, 0),
-                              ),
-                              Shadow(
-                                blurRadius: 15.0,
-                                color: Color(0xFFfde047).withOpacity(0.6),
-                                offset: Offset(0, 0),
-                              ),
-                            ],
+                            shadows: _resolvedTheme == 'dark'
+                                ? [
+                                    Shadow(
+                                      blurRadius: 8.0,
+                                      color: Colors.white.withOpacity(0.7),
+                                      offset: Offset(0, 0),
+                                    ),
+                                    Shadow(
+                                      blurRadius: 15.0,
+                                      color: Color(0xFFfde047).withOpacity(0.6),
+                                      offset: Offset(0, 0),
+                                    ),
+                                  ]
+                                : null,
                             fontFamily: 'CinzelDecorative',
                           ),
                           textAlign: TextAlign.center,
                         ),
                       ),
-                      // Spacer to balance the back button
                       SizedBox(width: 48),
                     ],
                   ),
@@ -267,6 +273,7 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
                       onStartNewGame: _startNewGame,
                       formatTime: _formatTime,
                       calculateProgress: _calculateProgress,
+                      isDarkMode: _resolvedTheme == 'dark',
                     ),
                   ),
                 ),
@@ -275,6 +282,7 @@ class _LevelSelectionScreenState extends State<LevelSelectionScreen> {
                 KingdomProgressFooter(
                   completedCount: _getCompletedCount(),
                   totalPuzzles: puzzleList.length,
+                  isDarkMode: _resolvedTheme == 'dark',
                 ),
               ],
             ),

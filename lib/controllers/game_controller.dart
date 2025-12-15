@@ -5,8 +5,8 @@ import '../services/save_service.dart';
 import '../models/sudoku_cell.dart';
 import '../models/action.dart' as game_action;
 import '../services/settings_service.dart';
-// Add this import at the top of game_controller.dart
 import '../services/hint_service.dart';
+import '../services/hodoku_hint_service.dart';
 
 bool debug = true;
 
@@ -41,48 +41,70 @@ class GameController extends ChangeNotifier {
   }) : gameState = GameState.newGame(puzzleId, difficulty) {
     // Constructor body can be empty or add initialization here
   }
-
-// ─────────────────────────────────────────────────────────────
-
-// BUG #2: In getHint() method - wrong property names
-// HintResult uses 'cell' (Position object), not 'row' and 'col'
-
   void clearHint() {
     if (gameState.hintCell != null) {
       gameState.clearHint();
+      // 🔥 NEW: Also clear selection when clearing hint
+      gameState.selectedCells.clear();
+      gameState.highlightedCells.clear();
+      updateHighlights();
       notifyListeners();
     }
   }
+// Add this to your game_controller.dart file
+// Replace your existing getHint() method with this enhanced version
 
-  void getHint() {
-    print('\n💡 ========== GET HINT ==========');
-    print('User requested a hint...');
+  Future<void> getHint() async {
+    print('\n💡 ========== GET HINT START ==========');
+    SaveService.incrementHintsUsed();
 
+    print('🌐 Trying HoDoKu API...');
+    try {
+      final hodokuHint = await HoDoKuHintService.getHint(gameState);
+
+      if (hodokuHint != null) {
+        print('✅ Got HoDoKu hint: ${hodokuHint.techniqueName}');
+
+        HoDoKuHintService.applyHint(gameState, hodokuHint);
+
+        print('📊 After applyHint:');
+        print(
+            '   lastHintExplanation: ${gameState.lastHintExplanation != null ? "SET" : "NULL"}');
+        print('   lastHintType: ${gameState.lastHintType}');
+
+        print('✅ Calling notifyListeners()');
+        notifyListeners();
+        print('========================================\n');
+        return;
+      }
+      print('⚠️ No HoDoKu hint returned');
+    } catch (e, stackTrace) {
+      print('❌ HoDoKu error: $e');
+      print('Stack: $stackTrace');
+    }
+
+    print('🔍 Falling back to standard hints...');
     final hint = HintService.getHint(gameState);
 
-    if (hint == null) {
+    if (hint != null) {
+      print('✅ Using standard hint');
+      gameState.hintCell = hint.cell;
+      gameState.hintNumber = hint.number;
+      gameState.lastHintExplanation = hint.explanation;
+      gameState.lastHintType = hint.type.toString();
+      gameState.hintHighlightCells = hint.highlightCells;
+      gameState.hintHighlightNumbers = hint.highlightNumbers;
+    } else {
       print('❌ No hints available');
-      print('================================\n');
-      return;
+      gameState.hintCell = null;
+      gameState.hintNumber = null;
+      gameState.lastHintExplanation = 'No hints available.';
+      gameState.lastHintType = null;
     }
 
-    // Store hint in game state
-    gameState.hintCell = hint.cell;
-    gameState.hintNumber = hint.number;
-    gameState.lastHintExplanation =
-        hint.explanation; // 🔥 NEW: Store explanation
-
-    print('\n✅ HINT FOUND!');
-    print('Type: ${hint.type}');
-    print('Cell: (${hint.cell.row}, ${hint.cell.col})');
-    print('Number: ${hint.number}');
-    print('Explanation: ${hint.explanation}');
-    if (hint.extraInfo != null) {
-      print('Extra Info: ${hint.extraInfo}');
-    }
-    print('================================\n');
-
+    print('✅ Calling notifyListeners()');
     notifyListeners();
+    print('========================================\n');
   }
 
   void handleCellTap(int row, int col) {

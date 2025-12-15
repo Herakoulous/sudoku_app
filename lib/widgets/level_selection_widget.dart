@@ -21,6 +21,7 @@ class PuzzleGridBuilder extends StatelessWidget {
   final Function(PuzzleData) onStartNewGame;
   final String Function(int) formatTime;
   final double Function(GameState?) calculateProgress;
+  final bool isDarkMode; // NEW
 
   const PuzzleGridBuilder({
     Key? key,
@@ -36,6 +37,7 @@ class PuzzleGridBuilder extends StatelessWidget {
     required this.onStartNewGame,
     required this.formatTime,
     required this.calculateProgress,
+    required this.isDarkMode, // NEW
   }) : super(key: key);
 
   @override
@@ -155,6 +157,20 @@ class PuzzleTile extends StatelessWidget {
     required this.difficulty,
   }) : super(key: key);
 
+  // Color _getBackgroundColor() {
+  //   if (isLocked) {
+  //     return isDarkMode
+  //         ? Colors.black.withOpacity(0.6)
+  //         : Colors.grey.withOpacity(0.3);
+  //   }
+  //   if (isExpanded) {
+  //     return Color(0xFFeca413).withOpacity(0.2);
+  //   }
+  //   return isDarkMode
+  //       ? Colors.black.withOpacity(0.3)
+  //       : Colors.white.withOpacity(0.7);
+  // }
+
   @override
   Widget build(BuildContext context) {
     final hasProgress = savedGame != null;
@@ -243,7 +259,7 @@ class PuzzleTile extends StatelessWidget {
                   right: 6,
                   child: Icon(
                     Icons.flag,
-                    color: RealmTheme.fromRealm(realmName).primaryColor,
+                    color: RealmTheme.fromRealmSync(realmName).primaryColor,
                     size: 18,
                     shadows: [
                       Shadow(
@@ -291,7 +307,7 @@ class ExpandedPuzzleView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = RealmTheme.fromRealm(realmName);
+    final theme = RealmTheme.fromRealmSync(realmName);
     final hasProgress = savedGame != null;
 
     return Padding(
@@ -510,7 +526,7 @@ class SudokuPreviewGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grid = savedGame?.currentGrid ?? puzzle.grid;
-    final theme = RealmTheme.fromRealm(realmName);
+    final theme = RealmTheme.fromRealmSync(realmName);
 
     // DEBUG
     print('🎨 _buildSudokuGrid called for puzzle: ${puzzle.id}');
@@ -627,13 +643,14 @@ class SudokuPreviewGrid extends StatelessWidget {
 class KingdomProgressFooter extends StatelessWidget {
   final int completedCount;
   final int totalPuzzles;
+  final bool isDarkMode; // NEW
 
   const KingdomProgressFooter({
     Key? key,
     required this.completedCount,
     required this.totalPuzzles,
+    required this.isDarkMode, // NEW
   }) : super(key: key);
-
   @override
   Widget build(BuildContext context) {
     final progress = completedCount / totalPuzzles;

@@ -56,10 +56,6 @@ class RealmConfig {
     return puzzles;
   }
 
-  static String getBackgroundForRealm(String realmName) {
-    return realmBackgrounds[realmName] ?? 'images/default_background.jpg';
-  }
-
   static Color getPrimaryColor(String realmName) {
     final colorValue = realmColors[realmName]?['primary'] ?? 0xFFeca413;
     return Color(colorValue);
@@ -68,5 +64,9 @@ class RealmConfig {
   static Color getAccentColor(String realmName) {
     final colorValue = realmColors[realmName]?['accent'] ?? 0xFFfde047;
     return Color(colorValue);
+  }
+
+  static String getBackgroundForRealm(String realmName) {
+    return realmBackgrounds[realmName] ?? 'images/default_background.jpg';
   }
 }

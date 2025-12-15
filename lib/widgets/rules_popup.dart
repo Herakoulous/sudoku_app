@@ -6,14 +6,12 @@ class RulesPopup extends StatelessWidget {
   final List<ConstraintType> constraintTypes;
   final RealmTheme theme;
   final VoidCallback onClose;
-  final VoidCallback? onGetHint; // ← ADD THIS LINE
 
   const RulesPopup({
     Key? key,
     required this.constraintTypes,
     required this.theme,
     required this.onClose,
-    this.onGetHint, // ← ADD THIS LINE
   }) : super(key: key);
 
   @override
@@ -79,29 +77,6 @@ class RulesPopup extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pop(); // Close dialog
-                        if (onGetHint != null) {
-                          onGetHint!(); // Trigger hint
-                        }
-                      },
-                      icon: Icon(Icons.lightbulb_outline, size: 24),
-                      label: Text(
-                        'Get a Hint',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.accentColor,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
                   ),
 
                   SizedBox(height: 12),
@@ -641,7 +616,6 @@ class RulesPopup extends StatelessWidget {
           Navigator.of(context).pop();
           onClose();
         },
-        onGetHint: onGetHint, // Pass it through
       ),
     );
   }

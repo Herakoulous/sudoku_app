@@ -36,6 +36,19 @@ class GameState {
   List<VariantConstraint> constraints;
   Position? hintCell; // Position of hinted cell (null if no hint)
   int? hintNumber; // Suggested number (null if no hint)
+  String? lastHintType;
+
+  // 🔥 NEW: Hint highlighting fields
+  Set<Position>? hintHighlightRows;
+  Set<Position>? hintHighlightColumns;
+  Set<Position>? hintHighlightCells;
+  Set<int>? hintHighlightNumbers;
+
+  // Add these fields to GameState class:
+  int currentHintStep = 1; // Track which hint step we're on
+  String? lastGridState; // Track grid state to detect changes
+  bool lastHintWasElimination = false; // Track if last hint was elimination
+
   GameState({
     required this.difficulty,
     required this.puzzleId,
@@ -50,9 +63,18 @@ class GameState {
     List<game_action.Action>? actionHistory,
     this.currentActionIndex = -1,
     List<VariantConstraint>? constraints,
-    this.hintCell, // ADD THIS
-    this.hintNumber, // ADD THIS
+    this.hintCell,
+    this.hintNumber,
     this.lastHintExplanation,
+    this.lastHintType,
+    // 🔥 NEW: Hint highlighting parameters
+    this.hintHighlightRows,
+    this.hintHighlightColumns,
+    this.hintHighlightCells,
+    this.hintHighlightNumbers,
+    this.currentHintStep = 1,
+    this.lastGridState,
+    this.lastHintWasElimination = false,
   })  : grid = grid ?? GameState._createEmptyGrid(),
         selectedCells = selectedCells ?? <Position>{},
         highlightedCells = highlightedCells ?? <Position>{},
@@ -69,11 +91,40 @@ class GameState {
     }).toList();
   }
 
-  // ADD THIS METHOD to clear hint
+// Update clearHint() method:
   void clearHint() {
     hintCell = null;
     hintNumber = null;
     lastHintExplanation = null;
+    lastHintType = null;
+    hintHighlightRows = null;
+    hintHighlightColumns = null;
+    hintHighlightCells = null;
+    hintHighlightNumbers = null;
+    // DON'T reset currentHintStep here - only reset when grid changes
+  }
+
+// Add method to get current grid state as string
+  String getCurrentGridState() {
+    final buffer = StringBuffer();
+    for (int row = 0; row < 9; row++) {
+      for (int col = 0; col < 9; col++) {
+        buffer.write(grid[row][col].number ?? 0);
+      }
+    }
+    return buffer.toString();
+  }
+
+// Add method to check if grid changed
+  bool hasGridChanged() {
+    final currentGrid = getCurrentGridState();
+    if (lastGridState == null) {
+      lastGridState = currentGrid;
+      return false;
+    }
+    final changed = currentGrid != lastGridState;
+    lastGridState = currentGrid;
+    return changed;
   }
 
   // Create empty grid helper
@@ -177,6 +228,22 @@ class GameState {
           : null,
       'hintNumber': hintNumber,
       'lastHintExplanation': lastHintExplanation,
+      'lastHintType': lastHintType,
+      // 🔥 NEW: Hint highlighting serialization
+      'hintHighlightRows': hintHighlightRows
+          ?.map((pos) => {'row': pos.row, 'col': pos.col})
+          .toList(),
+      'hintHighlightColumns': hintHighlightColumns
+          ?.map((pos) => {'row': pos.row, 'col': pos.col})
+          .toList(),
+      'hintHighlightCells': hintHighlightCells
+          ?.map((pos) => {'row': pos.row, 'col': pos.col})
+          .toList(),
+      'hintHighlightNumbers': hintHighlightNumbers?.toList(),
+      // Add to toJson():
+      'currentHintStep': currentHintStep,
+      'lastGridState': lastGridState,
+      'lastHintWasElimination': lastHintWasElimination,
     };
   }
 
@@ -206,21 +273,60 @@ class GameState {
       hintCell = Position(hintCellData['row'], hintCellData['col']);
     }
 
+    // 🔥 NEW: Deserialize hint highlighting
+    Set<Position>? hintHighlightRows;
+    if (json['hintHighlightRows'] != null) {
+      final rowsData = json['hintHighlightRows'] as List;
+      hintHighlightRows = rowsData
+          .map((posData) => Position(posData['row'], posData['col']))
+          .toSet();
+    }
+
+    Set<Position>? hintHighlightColumns;
+    if (json['hintHighlightColumns'] != null) {
+      final colsData = json['hintHighlightColumns'] as List;
+      hintHighlightColumns = colsData
+          .map((posData) => Position(posData['row'], posData['col']))
+          .toSet();
+    }
+
+    Set<Position>? hintHighlightCells;
+    if (json['hintHighlightCells'] != null) {
+      final cellsData = json['hintHighlightCells'] as List;
+      hintHighlightCells = cellsData
+          .map((posData) => Position(posData['row'], posData['col']))
+          .toSet();
+    }
+
+    Set<int>? hintHighlightNumbers;
+    if (json['hintHighlightNumbers'] != null) {
+      final numbersData = json['hintHighlightNumbers'] as List;
+      hintHighlightNumbers = numbersData.cast<int>().toSet();
+    }
     return GameState(
-        difficulty: json['difficulty'],
-        puzzleId: json['puzzleId'],
-        grid: grid,
-        currentMode: GameMode.values[json['currentMode'] ?? 0],
-        selectionMode: SelectionMode.values[json['selectionMode'] ?? 0],
-        elapsedTime: Duration(seconds: json['elapsedTime'] ?? 0),
-        isPaused: json['isPaused'] ?? false,
-        isCompleted: json['isCompleted'] ?? false, // 🔥 NEW
-        currentActionIndex: json['currentActionIndex'] ?? -1,
-        actionHistory: actionHistory,
-        constraints: constraints,
-        // ADD THESE:
-        hintCell: hintCell,
-        hintNumber: json['hintNumber'],
-        lastHintExplanation: json['lastHintExplanation']);
+      difficulty: json['difficulty'],
+      puzzleId: json['puzzleId'],
+      grid: grid,
+      currentMode: GameMode.values[json['currentMode'] ?? 0],
+      selectionMode: SelectionMode.values[json['selectionMode'] ?? 0],
+      elapsedTime: Duration(seconds: json['elapsedTime'] ?? 0),
+      isPaused: json['isPaused'] ?? false,
+      isCompleted: json['isCompleted'] ?? false,
+      currentActionIndex: json['currentActionIndex'] ?? -1,
+      actionHistory: actionHistory,
+      constraints: constraints,
+      hintCell: hintCell,
+      hintNumber: json['hintNumber'],
+      lastHintType: json['lastHintType'],
+      lastHintExplanation: json['lastHintExplanation'],
+      hintHighlightRows: hintHighlightRows,
+      hintHighlightColumns: hintHighlightColumns,
+      hintHighlightCells: hintHighlightCells,
+      hintHighlightNumbers: hintHighlightNumbers,
+      // 🔥 NEW: Add these
+      currentHintStep: json['currentHintStep'] ?? 1,
+      lastGridState: json['lastGridState'],
+      lastHintWasElimination: json['lastHintWasElimination'] ?? false,
+    );
   }
 }

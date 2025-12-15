@@ -6,6 +6,61 @@ class SaveService {
   static const String _keyPrefix = 'sudoku_game_';
   static const String _completedPrefix = 'sudoku_completed_';
   static const String _bestTimePrefix = 'sudoku_best_time_';
+  static const String _totalTimeKey = 'sudoku_total_time'; // 🔥 NEW
+  static const String _hintsUsedKey = 'sudoku_hints_used'; // 🔥 NEW
+  static const String _sessionStartKey = 'sudoku_session_start_'; // 🔥 NEW
+
+  // 🔥 NEW: Track total play time across all puzzles
+  static Future<void> addPlayTime(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentTotal = prefs.getInt(_totalTimeKey) ?? 0;
+    await prefs.setInt(_totalTimeKey, currentTotal + seconds);
+    print(
+        '⏱️ Added $seconds seconds to total play time. Total: ${currentTotal + seconds}s');
+  }
+
+  static Future<int> getTotalPlayTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_totalTimeKey) ?? 0;
+  }
+
+  // 🔥 NEW: Track hints used
+  static Future<void> incrementHintsUsed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentHints = prefs.getInt(_hintsUsedKey) ?? 0;
+    await prefs.setInt(_hintsUsedKey, currentHints + 1);
+    print('💡 Hints used: ${currentHints + 1}');
+  }
+
+  static Future<int> getTotalHintsUsed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_hintsUsedKey) ?? 0;
+  }
+
+  // 🔥 NEW: Session tracking for play time
+  static Future<void> startSession(String puzzleId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await prefs.setInt('$_sessionStartKey$puzzleId', now);
+    print('🎮 Started session for $puzzleId at $now');
+  }
+
+  static Future<void> endSession(String puzzleId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final startTime = prefs.getInt('$_sessionStartKey$puzzleId');
+
+    if (startTime != null) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final elapsedSeconds = ((now - startTime) / 1000).round();
+
+      // Add to total play time
+      await addPlayTime(elapsedSeconds);
+
+      // Clear session
+      await prefs.remove('$_sessionStartKey$puzzleId');
+      print('🎮 Ended session for $puzzleId. Duration: ${elapsedSeconds}s');
+    }
+  }
 
   // Save the current game state
   static Future<void> saveGame(GameState gameState) async {
@@ -26,7 +81,7 @@ class SaveService {
 
     // 🔥 NEW: Don't save if no user input (except if completed)
     if (!hasUserInput && !gameState.isCompleted) {
-      print('⏭️ No user input - skipping save for ${gameState.puzzleId}');
+      print('⭐️ No user input - skipping save for ${gameState.puzzleId}');
       return;
     }
 
@@ -115,9 +170,6 @@ class SaveService {
     final key = _keyPrefix + puzzleId;
     await prefs.remove(key);
     await prefs.remove(key + '_timestamp');
-    // ❌ REMOVED: await prefs.remove(_completedPrefix + puzzleId);
-    // ✅ Keep completion status - only clear the in-progress save
-    // Best time is already kept as per your comment
     print('🗑️ Game cleared: $key (completion status preserved)');
   }
 
@@ -157,5 +209,14 @@ class SaveService {
     }
 
     return completedIds;
+  }
+
+  // 🔥 NEW: Get first completion date (for streak tracking)
+  static Future<DateTime?> getFirstCompletionDate() async {
+    final completedIds = await getCompletedPuzzleIds();
+    if (completedIds.isEmpty) return null;
+
+    // Return today for now (you can enhance this with actual tracking)
+    return DateTime.now();
   }
 }
