@@ -29,14 +29,20 @@ flutter:
   fonts:
     - family: CinzelDecorative
       fonts:
+        - asset: fonts/CinzelDecorative-Regular.ttf
+          weight: 400
         - asset: fonts/CinzelDecorative-Bold.ttf
           weight: 700
+        - asset: fonts/CinzelDecorative-Black.ttf
+          weight: 900
   
   assets:
     - images/castle_background.png
     - images/castle.jpg
     - images/realms/
     - assets/audio/
+    - assets/data/classroom.json
+    - assets/data/daily_pool.json
 
 flutter_icons:
   android: true

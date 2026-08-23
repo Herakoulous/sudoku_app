@@ -1,21 +1,30 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:sudoku_app/main.dart';
+import 'package:sudoku_realms/main.dart';
 
 void main() {
-  testWidgets('Sudoku app smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const SudokuApp());
+  setUp(() {
+    // Startup reads SharedPreferences (resumable game, classroom); a mock store
+    // keeps that from throwing a platform exception.
+    SharedPreferences.setMockInitialValues({});
+  });
 
-    // Verify that the menu screen loads
-    expect(find.text('Sudoku'), findsOneWidget);
+  testWidgets('app boots into the shell on the Play tab',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const SudokuRealmsApp());
+
+    // Content fades in on a stagger; settle before asserting.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    // Play tab hero.
+    expect(find.text('SUDOKU'), findsOneWidget);
+    expect(find.text('REALMS'), findsOneWidget);
+
+    // Bottom navigation is present.
+    expect(find.text('Play'), findsWidgets);
+    expect(find.text('Learn'), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
   });
 }

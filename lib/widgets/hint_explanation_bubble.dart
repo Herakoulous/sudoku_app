@@ -98,6 +98,11 @@ class _HintExplanationBubbleState extends State<HintExplanationBubble> {
   String _formatHintType(String? hintType) {
     if (hintType == null) return 'Hint';
 
+    // 🔥 NEW: Handle validation error
+    if (hintType == 'validation_error') {
+      return 'Incorrect Numbers';
+    }
+
     // Handle standard hints
     if (hintType.startsWith('HintType.')) {
       return hintType.replaceAll('HintType.', '').replaceAll('_', ' ');
@@ -119,6 +124,11 @@ class _HintExplanationBubbleState extends State<HintExplanationBubble> {
 
   Color _getDifficultyColor(String? hintType) {
     if (hintType == null) return widget.theme.primaryColor;
+
+    // 🔥 NEW: Red for validation errors
+    if (hintType == 'validation_error') {
+      return Colors.red;
+    }
 
     // Beginner - Green
     if (hintType.contains('Naked Single') ||
@@ -170,6 +180,11 @@ class _HintExplanationBubbleState extends State<HintExplanationBubble> {
 
   String _getDifficultyEmoji(String? hintType) {
     if (hintType == null) return '💡';
+
+    // 🔥 NEW: Warning emoji for validation errors
+    if (hintType == 'validation_error') {
+      return '⚠️';
+    }
 
     if (hintType.contains('Naked Single') ||
         hintType.contains('Hidden Single') ||
@@ -224,6 +239,9 @@ class _HintExplanationBubbleState extends State<HintExplanationBubble> {
     final difficultyColor = _getDifficultyColor(widget.hintType);
     final emoji = _getDifficultyEmoji(widget.hintType);
 
+    // 🔥 NEW: Check if this is a validation error
+    final isValidationError = widget.hintType == 'validation_error';
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(12),
@@ -253,7 +271,8 @@ class _HintExplanationBubbleState extends State<HintExplanationBubble> {
                 child: Row(
                   children: [
                     Text(
-                      '$emoji Hint',
+                      // 🔥 NEW: Show different label for validation errors
+                      isValidationError ? '$emoji Error' : '$emoji Hint',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -317,8 +336,8 @@ class _HintExplanationBubbleState extends State<HintExplanationBubble> {
             ),
           ),
 
-          // Navigation
-          if (hasMultipleParagraphs) ...[
+          // Navigation (only show for multi-paragraph hints, not for errors)
+          if (hasMultipleParagraphs && !isValidationError) ...[
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -9,6 +9,20 @@ class SaveService {
   static const String _totalTimeKey = 'sudoku_total_time'; // 🔥 NEW
   static const String _hintsUsedKey = 'sudoku_hints_used'; // 🔥 NEW
   static const String _sessionStartKey = 'sudoku_session_start_'; // 🔥 NEW
+  static const String _rulesKnownPrefix = 'sudoku_rules_known_';
+
+  /// Marks a realm's rules as learned, so its rules card stops opening itself on
+  /// entry. Set once the player finishes a puzzle there — they know the rules by
+  /// then, and the card is still one tap away in the header.
+  static Future<void> markRulesKnown(String realmName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_rulesKnownPrefix$realmName', true);
+  }
+
+  static Future<bool> areRulesKnown(String realmName) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('$_rulesKnownPrefix$realmName') ?? false;
+  }
 
   // 🔥 NEW: Track total play time across all puzzles
   static Future<void> addPlayTime(int seconds) async {
@@ -109,7 +123,34 @@ class SaveService {
     final jsonString = jsonEncode(json);
     await prefs.setString(key, jsonString);
 
+    // Stamp the save so "Continue" can find the most recently played puzzle.
+    await prefs.setInt(
+        '${key}_timestamp', DateTime.now().millisecondsSinceEpoch);
+
     print('💾 Game saved: ${gameState.puzzleId} (has input: $hasUserInput)');
+  }
+
+  /// The puzzle the player was last in the middle of, or null if there is no
+  /// unfinished game. Backs the "Continue" card on the main menu.
+  static Future<String?> getMostRecentSaveId() async {
+    final ids = await getSavedGameIds();
+    if (ids.isEmpty) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    String? bestId;
+    int bestStamp = -1;
+
+    for (final id in ids) {
+      // Saves written before timestamps existed sort last but stay reachable.
+      final stamp = prefs.getInt('$_keyPrefix${id}_timestamp') ?? 0;
+      if (stamp > bestStamp) {
+        bestStamp = stamp;
+        bestId = id;
+      }
+    }
+
+    return bestId;
   }
 
   // Load a saved game by puzzleId

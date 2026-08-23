@@ -4,6 +4,7 @@ import '../models/action.dart' as game_action;
 import '../models/position.dart';
 import '../models/variant_constraint.dart';
 import '../data/puzzles.dart';
+import 'hint_lesson.dart';
 
 enum GameMode { NORMAL, SIDE_NOTES, CENTER_NOTES, COLORING }
 
@@ -44,6 +45,22 @@ class GameState {
   Set<Position>? hintHighlightCells;
   Set<int>? hintHighlightNumbers;
 
+  /// The hint currently being walked through, and how far into it the player
+  /// has read.
+  ///
+  /// Deliberately not persisted: a lesson is tied to the exact candidate state
+  /// the solver reasoned over, and reviving a stale one against a changed board
+  /// would explain a position that no longer exists.
+  HintLesson? activeLesson;
+  int lessonStage = 0;
+
+  /// Hints taken and wrong digits entered during THIS attempt.
+  ///
+  /// Achievements need to know whether a solve was clean, and the global
+  /// counters cannot answer that — they only say how many hints were ever used.
+  int hintsUsedThisGame;
+  int mistakesThisGame;
+
   // Add these fields to GameState class:
   int currentHintStep = 1; // Track which hint step we're on
   String? lastGridState; // Track grid state to detect changes
@@ -75,6 +92,8 @@ class GameState {
     this.currentHintStep = 1,
     this.lastGridState,
     this.lastHintWasElimination = false,
+    this.hintsUsedThisGame = 0,
+    this.mistakesThisGame = 0,
   })  : grid = grid ?? GameState._createEmptyGrid(),
         selectedCells = selectedCells ?? <Position>{},
         highlightedCells = highlightedCells ?? <Position>{},
@@ -93,6 +112,8 @@ class GameState {
 
 // Update clearHint() method:
   void clearHint() {
+    activeLesson = null;
+    lessonStage = 0;
     hintCell = null;
     hintNumber = null;
     lastHintExplanation = null;
@@ -102,6 +123,13 @@ class GameState {
     hintHighlightCells = null;
     hintHighlightNumbers = null;
     // DON'T reset currentHintStep here - only reset when grid changes
+  }
+
+  /// The stage of the lesson currently on screen, if any.
+  HintStage? get activeStage {
+    final lesson = activeLesson;
+    if (lesson == null || lesson.stages.isEmpty) return null;
+    return lesson.stages[lessonStage.clamp(0, lesson.stages.length - 1)];
   }
 
 // Add method to get current grid state as string
@@ -244,6 +272,8 @@ class GameState {
       'currentHintStep': currentHintStep,
       'lastGridState': lastGridState,
       'lastHintWasElimination': lastHintWasElimination,
+      'hintsUsedThisGame': hintsUsedThisGame,
+      'mistakesThisGame': mistakesThisGame,
     };
   }
 
@@ -327,6 +357,8 @@ class GameState {
       currentHintStep: json['currentHintStep'] ?? 1,
       lastGridState: json['lastGridState'],
       lastHintWasElimination: json['lastHintWasElimination'] ?? false,
+      hintsUsedThisGame: json['hintsUsedThisGame'] ?? 0,
+      mistakesThisGame: json['mistakesThisGame'] ?? 0,
     );
   }
 }

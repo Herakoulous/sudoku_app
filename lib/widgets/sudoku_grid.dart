@@ -4,7 +4,9 @@ import '../controllers/game_controller.dart';
 import '../models/sudoku_cell.dart';
 import '../models/position.dart';
 import '../models/variant_constraint.dart';
+import '../models/hint_lesson.dart';
 import '../utils/realm_theme.dart';
+import 'hint_overlay_painter.dart';
 
 class SudokuGrid extends StatefulWidget {
   final GameController controller;
@@ -20,74 +22,221 @@ class SudokuGrid extends StatefulWidget {
   State<SudokuGrid> createState() => _SudokuGridState();
 }
 
-class _SudokuGridState extends State<SudokuGrid> {
+class _SudokuGridState extends State<SudokuGrid>
+    with TickerProviderStateMixin {
   bool _isDragging = false;
   Set<Position> _draggedCells = {};
+
+  /// Plays once per hint stage, so links draw themselves and marks fade in
+  /// rather than snapping.
+  late final AnimationController _stageIn;
+
+  /// Drives the breathing ring on emphasised cells. Only runs while a hint is on
+  /// screen — a permanently repeating controller would schedule a frame forever
+  /// and drain battery during ordinary play.
+  late final AnimationController _pulse;
+
+  HintStage? _lastStage;
 
   @override
   void initState() {
     super.initState();
+
+    // Created here rather than as lazy `late` initialisers: a grid disposed
+    // before any hint appeared would otherwise construct its controllers inside
+    // dispose(), where the TickerMode ancestor lookup is already invalid.
+    _stageIn = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 620),
+    );
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+
     widget.controller.addListener(_onGameStateChanged);
+    _syncStageAnimation();
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onGameStateChanged);
+    _stageIn.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 
-  void _onGameStateChanged() {
-    print('===== _onGameStateChanged called at ${DateTime.now()} =====');
-    print('Stack trace: ${StackTrace.current}');
-    setState(() {});
+  /// Restarts the entrance animation whenever the visible stage changes.
+  void _syncStageAnimation() {
+    final stage = widget.controller.gameState.activeStage;
+    if (identical(stage, _lastStage)) return;
+
+    _lastStage = stage;
+    if (stage == null) {
+      _stageIn.value = 0;
+      _pulse.stop();
+    } else {
+      _stageIn.forward(from: 0);
+      if (!_pulse.isAnimating) _pulse.repeat();
+    }
   }
+
+  void _onGameStateChanged() {
+    _syncStageAnimation();
+    if (mounted) setState(() {});
+  }
+
+  /// Identifies the 9x9 board itself, so pointer positions can be mapped to
+  /// cells from the board's own geometry instead of from hardcoded padding.
+  final GlobalKey _boardKey = GlobalKey();
+
+  /// Sandwich clues live outside the board, so the grid has to reserve room for
+  /// them. Only sandwich puzzles pay for the gutter.
+  List<VariantConstraint> get _sandwichClues => widget
+      .controller.gameState.constraints
+      .where((c) =>
+          c.type == ConstraintType.SANDWICH && c.sandwichSum != null)
+      .toList();
 
   @override
   Widget build(BuildContext context) {
-    print('===== SudokuGrid BUILD at ${DateTime.now()} =====');
+    final clues = _sandwichClues;
+
     return Padding(
       padding: const EdgeInsets.only(left: 16, right: 16, top: 50),
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: Stack(
-          children: [
-            // Grid of cells
-            GridView.builder(
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 9,
-              ),
-              itemCount: 81,
-              itemBuilder: (context, index) {
-                final row = index ~/ 9;
-                final col = index % 9;
-                final cell = widget.controller.gameState.grid[row][col];
-                return buildCell(row, col, cell);
-              },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Row clues sit to the left of the board and column clues above it.
+          final gutter =
+              clues.isEmpty ? 0.0 : (constraints.maxWidth * 0.09).clamp(22.0, 34.0);
+          final boardSize = constraints.maxWidth - gutter;
+          final cellSize = boardSize / 9;
+
+          return SizedBox(
+            width: constraints.maxWidth,
+            height: boardSize + gutter,
+            child: Stack(
+              children: [
+                for (final clue in clues)
+                  _positionClue(clue, gutter, cellSize),
+                Positioned(
+                  left: gutter,
+                  top: gutter,
+                  width: boardSize,
+                  height: boardSize,
+                  child: _buildBoard(),
+                ),
+              ],
             ),
-            // Overlay: All constraints (rendered on top of grid)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: ConstraintPainter(
-                    constraints: widget.controller.gameState.constraints,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBoard() {
+    final stage = widget.controller.gameState.activeStage;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildCells(),
+        if (stage != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_stageIn, _pulse]),
+                builder: (context, _) => CustomPaint(
+                  painter: HintOverlayPainter(
+                    stage: stage,
+                    progress: _stageIn.value,
+                    pulse: _pulse.value,
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCells() {
+    return GridView.builder(
+      key: _boardKey,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 9,
+      ),
+      itemCount: 81,
+      itemBuilder: (context, index) {
+        final row = index ~/ 9;
+        final col = index % 9;
+        final cell = widget.controller.gameState.grid[row][col];
+        return buildCell(row, col, cell);
+      },
+    );
+  }
+
+  Widget _positionClue(
+      VariantConstraint clue, double gutter, double cellSize) {
+    final isRowClue = clue.sandwichRow != null;
+
+    return Positioned(
+      left: isRowClue ? 0 : gutter + clue.sandwichCol! * cellSize,
+      top: isRowClue ? gutter + clue.sandwichRow! * cellSize : 0,
+      width: isRowClue ? gutter : cellSize,
+      height: isRowClue ? cellSize : gutter,
+      child: SandwichClueLabel(
+        sum: clue.sandwichSum!,
+        theme: widget.theme,
       ),
     );
   }
+
+  /// Double taps are detected by hand rather than with GestureDetector's
+  /// onDoubleTap. Declaring onDoubleTap makes every *single* tap wait out the
+  /// double-tap timeout before firing, and cell selection is the most frequent
+  /// action in the game — a 300ms lag on it is far worse than the feature is
+  /// worth. Tracking tap times ourselves keeps selection instant.
+  Position? _lastTapCell;
+  DateTime? _lastTapTime;
+
+  static const Duration _doubleTapWindow = Duration(milliseconds: 320);
 
   void onCellTap(int row, int col) {
     if (_draggedCells.length > 1) {
       return;
     }
-    // 🔥 Clear hint on cell tap
-    widget.controller.clearHint();
+
+    final pos = Position(row, col);
+    final now = DateTime.now();
+
+    final isDoubleTap = _lastTapCell == pos &&
+        _lastTapTime != null &&
+        now.difference(_lastTapTime!) < _doubleTapWindow;
+
+    _lastTapCell = pos;
+    _lastTapTime = now;
+
+    // A lesson is dismissed explicitly, not by touching the board: the player
+    // needs to be able to tap around and look at cells while reading it.
+    if (widget.controller.gameState.activeLesson == null) {
+      widget.controller.clearHint();
+    }
     widget.controller.handleCellTap(row, col);
+
+    if (isDoubleTap) {
+      // Reset, so a third tap does not read as another double tap.
+      _lastTapCell = null;
+      _lastTapTime = null;
+
+      // The second tap toggled this cell out of the selection. Put it back so
+      // the number we are about to place stays selected and highlighted. Adding
+      // without clearing keeps any multi-selection intact.
+      widget.controller.gameState.selectedCells.add(pos);
+
+      widget.controller.promoteSingleNote(row, col);
+    }
   }
 
   void onCellDragStart(int row, int col) {
@@ -109,16 +258,19 @@ class _SudokuGridState extends State<SudokuGrid> {
   void onCellDragUpdate(DragUpdateDetails details) {
     if (!_isDragging) return;
 
-    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    // Map the pointer through the board's own render box. The previous version
+    // subtracted the padding by hand (16 left, 50 top), which silently breaks
+    // the moment the layout changes — as it does for sandwich puzzles, where
+    // the board is inset by a clue gutter.
+    final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
 
-    final localPosition = box.globalToLocal(details.globalPosition);
+    final local = box.globalToLocal(details.globalPosition);
+    final cellSize = box.size.width / 9;
+    if (cellSize <= 0) return;
 
-    final adjustedY = localPosition.dy - 50;
-    final cellSize = (box.size.width - 32) / 9;
-
-    final col = ((localPosition.dx - 16) / cellSize).floor().clamp(0, 8);
-    final row = (adjustedY / cellSize).floor().clamp(0, 8);
+    final col = (local.dx / cellSize).floor().clamp(0, 8);
+    final row = (local.dy / cellSize).floor().clamp(0, 8);
 
     final pos = Position(row, col);
 
@@ -217,7 +369,19 @@ class _SudokuGridState extends State<SudokuGrid> {
               ),
             ),
           ),
-          // Overlay 2: Colored thick border (when same number and colored)
+          // Overlay 2: Constraints layer (UNDER numbers, OVER backgrounds)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: CellConstraintPainter(
+                  constraints: widget.controller.gameState.constraints,
+                  row: row,
+                  col: col,
+                ),
+              ),
+            ),
+          ),
+          // Overlay 3: Colored thick border (when same number and colored)
           if (isSameNumberAndColored)
             Positioned.fill(
               child: IgnorePointer(
@@ -228,7 +392,7 @@ class _SudokuGridState extends State<SudokuGrid> {
                 ),
               ),
             ),
-          // Overlay 3: Error border (if needed)
+          // Overlay 4: Error border (if needed)
           if (cell.isError)
             Positioned.fill(
               child: IgnorePointer(
@@ -497,6 +661,338 @@ class _SudokuGridState extends State<SudokuGrid> {
 
     // 8. Default background
     return widget.theme.backgroundColor;
+  }
+}
+
+/// A sandwich clue: the sum of the digits trapped between the 1 and the 9 in
+/// that row or column.
+///
+/// Drawn as a widget in the gutter beside the board rather than painted from
+/// inside a cell. The old per-cell painter tried to draw at a negative offset,
+/// which the grid clipped away — the clues were simply never visible.
+class SandwichClueLabel extends StatelessWidget {
+  final int sum;
+  final RealmTheme theme;
+
+  const SandwichClueLabel({
+    super.key,
+    required this.sum,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(1.5),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.primaryColor.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: theme.primaryColor.withValues(alpha: 0.55),
+            width: 1,
+          ),
+        ),
+        child: Center(
+          // Totals run from 0 to 35, so two digits have to fit in a cell-width
+          // box however narrow the gutter gets.
+          child: FittedBox(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text(
+                '$sum',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: theme.primaryColor,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter for rendering constraints within a single cell
+class CellConstraintPainter extends CustomPainter {
+  final List<VariantConstraint> constraints;
+  final int row;
+  final int col;
+
+  CellConstraintPainter({
+    required this.constraints,
+    required this.row,
+    required this.col,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellSize = size.width;
+
+    for (var constraint in constraints) {
+      switch (constraint.type) {
+        case ConstraintType.KROPKI_WHITE:
+        case ConstraintType.KROPKI_BLACK:
+          _paintKropkiDotIfRelevant(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.XV_X:
+        case ConstraintType.XV_V:
+          _paintXVIfRelevant(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.GERMAN_WHISPERS:
+          _paintGermanWhispersIfRelevant(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.THERMO:
+          _paintThermoIfRelevant(canvas, constraint, cellSize);
+          break;
+        case ConstraintType.SANDWICH:
+          // Nothing to draw inside a cell — sandwich clues live in the gutter
+          // outside the board and are rendered by SandwichClueLabel.
+          break;
+      }
+    }
+  }
+
+  void _paintKropkiDotIfRelevant(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    bool isRelevant = false;
+    Offset? dotCenter;
+    final dotRadius = cellSize * 0.12;
+
+    if (constraint.orientation == 'horizontal') {
+      if (row == constraint.row1) {
+        if (col == constraint.col1) {
+          dotCenter = Offset(cellSize, cellSize / 2);
+          isRelevant = true;
+        } else if (col == constraint.col2) {
+          dotCenter = Offset(0, cellSize / 2);
+          isRelevant = true;
+        }
+      }
+    } else {
+      if (col == constraint.col1) {
+        if (row == constraint.row1) {
+          dotCenter = Offset(cellSize / 2, cellSize);
+          isRelevant = true;
+        } else if (row == constraint.row2) {
+          dotCenter = Offset(cellSize / 2, 0);
+          isRelevant = true;
+        }
+      }
+    }
+
+    if (!isRelevant || dotCenter == null) return;
+
+    final dotColor = constraint.type == ConstraintType.KROPKI_WHITE
+        ? Colors.white
+        : Colors.black;
+
+    final paint = Paint()
+      ..color = dotColor
+      ..style = PaintingStyle.fill;
+
+    if (constraint.type == ConstraintType.KROPKI_WHITE) {
+      final borderPaint = Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+      canvas.drawCircle(dotCenter, dotRadius, borderPaint);
+    }
+
+    canvas.drawCircle(dotCenter, dotRadius, paint);
+  }
+
+  void _paintXVIfRelevant(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    bool isRelevant = false;
+    Offset? center;
+
+    if (constraint.orientation == 'horizontal') {
+      if (row == constraint.row1) {
+        if (col == constraint.col1) {
+          center = Offset(cellSize, cellSize / 2);
+          isRelevant = true;
+        } else if (col == constraint.col2) {
+          center = Offset(0, cellSize / 2);
+          isRelevant = true;
+        }
+      }
+    } else {
+      if (col == constraint.col1) {
+        if (row == constraint.row1) {
+          center = Offset(cellSize / 2, cellSize);
+          isRelevant = true;
+        } else if (row == constraint.row2) {
+          center = Offset(cellSize / 2, 0);
+          isRelevant = true;
+        }
+      }
+    }
+
+    if (!isRelevant || center == null) return;
+
+    final isX = constraint.type == ConstraintType.XV_X;
+    final text = isX ? 'X' : 'V';
+
+    final bgPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final lineEraserSize = cellSize * 0.25;
+    final bgRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: center,
+        width: lineEraserSize,
+        height: lineEraserSize,
+      ),
+      Radius.circular(2),
+    );
+    canvas.drawRRect(bgRect, bgPaint);
+
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.black87,
+          fontSize: cellSize * 0.35,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        center.dx - textPainter.width / 2,
+        center.dy - textPainter.height / 2,
+      ),
+    );
+  }
+
+  void _paintGermanWhispersIfRelevant(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    // Check if this cell is one of the two cells in this constraint
+    bool isCell1 = (row == constraint.row1 && col == constraint.col1);
+    bool isCell2 = (row == constraint.row2 && col == constraint.col2);
+
+    if (!isCell1 && !isCell2) return;
+
+    final paint = Paint()
+      ..color = Color(0xFF22c55e)
+      ..strokeWidth = cellSize * 0.15
+      ..strokeCap = StrokeCap.round;
+
+    if (isCell1) {
+      // Draw from center of this cell towards cell2
+      final dx = constraint.col2 - constraint.col1;
+      final dy = constraint.row2 - constraint.row1;
+
+      final start = Offset(cellSize / 2, cellSize / 2);
+      final end = Offset(
+        cellSize / 2 + (dx * cellSize / 2),
+        cellSize / 2 + (dy * cellSize / 2),
+      );
+
+      canvas.drawLine(start, end, paint);
+    }
+
+    if (isCell2) {
+      // Draw from the edge (coming from cell1) to center of this cell
+      final dx = constraint.col2 - constraint.col1;
+      final dy = constraint.row2 - constraint.row1;
+
+      final start = Offset(
+        cellSize / 2 - (dx * cellSize / 2),
+        cellSize / 2 - (dy * cellSize / 2),
+      );
+      final end = Offset(cellSize / 2, cellSize / 2);
+
+      canvas.drawLine(start, end, paint);
+    }
+  }
+
+  void _paintThermoIfRelevant(
+      Canvas canvas, VariantConstraint constraint, double cellSize) {
+    if (constraint.thermoCells == null || constraint.thermoCells!.isEmpty) {
+      return;
+    }
+
+    final cells = constraint.thermoCells!;
+    final thisCellPos = Position(row, col);
+
+    int cellIndex = -1;
+    for (int i = 0; i < cells.length; i++) {
+      if (cells[i] == thisCellPos) {
+        cellIndex = i;
+        break;
+      }
+    }
+
+    if (cellIndex == -1) return;
+
+    // A single flat track and a plain bulb. The old version stacked a thick
+    // line, a separate border stroke, a radial-gradient bulb, a glow and a
+    // shine highlight per cell — clear, but noisy and heavy on the eye. One calm
+    // tone reads just as clearly and lets the digits stay the focus.
+    const track = Color(0xFF9FB0C4);
+    final center = Offset(cellSize / 2, cellSize / 2);
+
+    final linePaint = Paint()
+      ..color = track
+      ..strokeWidth = cellSize * 0.24
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    // Half-segment toward the previous cell, and half toward the next, so
+    // adjacent cells meet cleanly at the shared border.
+    if (cellIndex > 0) {
+      final prev = cells[cellIndex - 1];
+      canvas.drawLine(
+        center,
+        Offset(
+          cellSize / 2 - (col - prev.col) * cellSize / 2,
+          cellSize / 2 - (row - prev.row) * cellSize / 2,
+        ),
+        linePaint,
+      );
+    }
+
+    if (cellIndex < cells.length - 1) {
+      final next = cells[cellIndex + 1];
+      canvas.drawLine(
+        center,
+        Offset(
+          cellSize / 2 + (next.col - col) * cellSize / 2,
+          cellSize / 2 + (next.row - row) * cellSize / 2,
+        ),
+        linePaint,
+      );
+    }
+
+    // The bulb: a single filled disc a little wider than the track, so the
+    // start of the thermometer is obvious without any gloss.
+    if (cellIndex == 0) {
+      canvas.drawCircle(
+        center,
+        cellSize * 0.30,
+        Paint()
+          ..color = track
+          ..style = PaintingStyle.fill,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(CellConstraintPainter oldDelegate) {
+    return oldDelegate.row != row ||
+        oldDelegate.col != col ||
+        oldDelegate.constraints != constraints;
   }
 }
 

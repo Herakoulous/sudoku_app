@@ -24,9 +24,9 @@ class SettingsService {
   static const bool _defaultShowMistakes = true;
   static const bool _defaultShowTimer = true;
   static const bool _defaultAutoNotes = true;
-  static const bool _defaultSoundEffects = true;
-  static const bool _defaultMusic = true;
-  static const String _defaultTheme = 'auto'; // Changed to 'auto'
+  static const bool _defaultSoundEffects = false;
+  static const bool _defaultMusic = false;
+  static const String _defaultTheme = 'dark';
   static const bool _defaultCustomColorsEnabled = true;
   static const Color _defaultGridBackground = Colors.white;
   static const Color _defaultGivenNumbers = Colors.black;

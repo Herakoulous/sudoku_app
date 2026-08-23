@@ -4,9 +4,19 @@ import '../models/position.dart';
 import '../services/save_service.dart';
 import '../models/sudoku_cell.dart';
 import '../models/action.dart' as game_action;
+import '../data/puzzles.dart';
+import '../data/realm_config.dart';
+import '../models/achievement.dart';
+import '../models/solve_record.dart';
+import '../services/achievement_service.dart';
+import '../services/archive_service.dart';
+import '../services/audio_service.dart';
+import '../models/hint_lesson.dart';
+import '../services/hint_lesson_builder.dart';
+import '../services/progress_service.dart';
+import '../services/solver_service.dart';
 import '../services/settings_service.dart';
-import '../services/hint_service.dart';
-import '../services/hodoku_hint_service.dart';
+import '../services/validation_service.dart';
 
 bool debug = true;
 
@@ -15,7 +25,11 @@ class GameController extends ChangeNotifier {
 
   // Save current game state
   Future<void> saveProgress() async {
+    if (ephemeral) return;
     await SaveService.saveGame(gameState);
+    // Mirror into the archive so the game can be browsed and reopened later,
+    // with its full undo history intact.
+    await ArchiveService.record(gameState);
   }
 
   Future<void> loadProgress() async {
@@ -35,76 +49,242 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  /// When true, this controller never touches persistent storage — no saved
+  /// game, no completion flag, no solve log entry — and answers no hints.
+  ///
+  /// The Dungeon reuses the board and number pad through this: a ranked attempt
+  /// on a classic puzzle must not overwrite that puzzle's realm save or count as
+  /// a realm completion, and ranked play offers no hints.
+  final bool ephemeral;
+
   GameController({
     required String puzzleId,
     required int difficulty,
-  }) : gameState = GameState.newGame(puzzleId, difficulty) {
-    // Constructor body can be empty or add initialization here
-  }
+    this.ephemeral = false,
+  }) : gameState = GameState.newGame(puzzleId, difficulty);
   void clearHint() {
-    if (gameState.hintCell != null) {
+    print('🧹 Clearing hint in GameController');
+    if (gameState.hintCell != null || gameState.lastHintExplanation != null) {
+      // 🔥 Use GameState's clearHint which properly clears everything
       gameState.clearHint();
-      // 🔥 NEW: Also clear selection when clearing hint
+
+      // 🔥 Also clear selection and highlights
       gameState.selectedCells.clear();
       gameState.highlightedCells.clear();
+
       updateHighlights();
       notifyListeners();
+      print('✅ Hint cleared');
+    } else {
+      print('⏸️ No hint to clear');
     }
   }
 // Add this to your game_controller.dart file
 // Replace your existing getHint() method with this enhanced version
 
+  /// Fetches the next solving step and turns it into a walkthrough.
+  ///
+  /// The lesson is stored on the game state rather than applied; the player
+  /// reads the reasoning first and chooses to take the result.
   Future<void> getHint() async {
-    print('\n💡 ========== GET HINT START ==========');
-    SaveService.incrementHintsUsed();
+    // A wrong digit already on the board makes every downstream explanation
+    // false, so it has to be fixed before any hint can be trusted.
+    final validation = ValidationService.validateUserEntries(gameState);
+    if (!validation.isValid) {
+      ValidationService.markWrongCells(gameState, validation.wrongCells);
 
-    print('🌐 Trying HoDoKu API...');
-    try {
-      final hodokuHint = await HoDoKuHintService.getHint(gameState);
-
-      if (hodokuHint != null) {
-        print('✅ Got HoDoKu hint: ${hodokuHint.techniqueName}');
-
-        HoDoKuHintService.applyHint(gameState, hodokuHint);
-
-        print('📊 After applyHint:');
-        print(
-            '   lastHintExplanation: ${gameState.lastHintExplanation != null ? "SET" : "NULL"}');
-        print('   lastHintType: ${gameState.lastHintType}');
-
-        print('✅ Calling notifyListeners()');
-        notifyListeners();
-        print('========================================\n');
-        return;
-      }
-      print('⚠️ No HoDoKu hint returned');
-    } catch (e, stackTrace) {
-      print('❌ HoDoKu error: $e');
-      print('Stack: $stackTrace');
-    }
-
-    print('🔍 Falling back to standard hints...');
-    final hint = HintService.getHint(gameState);
-
-    if (hint != null) {
-      print('✅ Using standard hint');
-      gameState.hintCell = hint.cell;
-      gameState.hintNumber = hint.number;
-      gameState.lastHintExplanation = hint.explanation;
-      gameState.lastHintType = hint.type.toString();
-      gameState.hintHighlightCells = hint.highlightCells;
-      gameState.hintHighlightNumbers = hint.highlightNumbers;
-    } else {
-      print('❌ No hints available');
+      gameState.activeLesson = null;
+      gameState.lessonStage = 0;
+      gameState.lastHintExplanation = validation.errorMessage;
+      gameState.lastHintType = 'validation_error';
       gameState.hintCell = null;
       gameState.hintNumber = null;
-      gameState.lastHintExplanation = 'No hints available.';
-      gameState.lastHintType = null;
+
+      notifyListeners();
+      return;
     }
 
-    print('✅ Calling notifyListeners()');
+    // Not counted yet — a failed request must not cost the player a hint.
+    final step = await SolverService.nextStep(gameState.getCurrentGridState());
+
+    if (step == null) {
+      gameState.activeLesson = null;
+      // Say which problem it is. "Check your connection" when the connection is
+      // fine and the server is simply out of date sends the player hunting for
+      // a fault that is not theirs.
+      gameState.lastHintExplanation = SolverService.lastFailure?.message ??
+          'No further hints are available for this position.';
+      gameState.lastHintType = 'unavailable';
+      notifyListeners();
+      return;
+    }
+
+    SaveService.incrementHintsUsed();
+    gameState.hintsUsedThisGame++;
+
+    gameState.activeLesson = HintLessonBuilder.build(step);
+    gameState.lessonStage = 0;
+    gameState.lastHintExplanation = null;
+    gameState.lastHintType = null;
+
+    // Point the grid at the conclusion so the cell is findable even before the
+    // player reaches the last stage.
+    final placement = gameState.activeLesson!.placementCell;
+    gameState.hintCell = placement;
+    gameState.hintNumber = gameState.activeLesson!.placementValue;
+
     notifyListeners();
-    print('========================================\n');
+  }
+
+  /// Moves one beat forward through the current lesson.
+  void nextLessonStage() {
+    final lesson = gameState.activeLesson;
+    if (lesson == null) return;
+    if (gameState.lessonStage >= lesson.stages.length - 1) return;
+
+    gameState.lessonStage++;
+    notifyListeners();
+  }
+
+  void previousLessonStage() {
+    if (gameState.activeLesson == null || gameState.lessonStage == 0) return;
+    gameState.lessonStage--;
+    notifyListeners();
+  }
+
+  void dismissLesson() {
+    if (gameState.activeLesson == null) return;
+    gameState.clearHint();
+    notifyListeners();
+  }
+
+  /// Carries out what the lesson concluded: places the digit, or strikes the
+  /// candidates it ruled out.
+  Future<void> applyLesson() async {
+    final lesson = gameState.activeLesson;
+    if (lesson == null) return;
+
+    final step = lesson.step;
+
+    if (step.placements.isNotEmpty) {
+      final placement = step.placements.first;
+      final pos = Position(placement.cell.row, placement.cell.col);
+      final cell = gameState.grid[pos.row][pos.col];
+
+      if (!cell.isGiven && cell.number == null) {
+        final oldCell = cell.copyWith();
+        final newCell = cell.copyWith(
+          number: placement.value,
+          sideNotes: <int>{},
+          centerNotes: <int>{},
+        );
+        gameState.grid[pos.row][pos.col] = newCell;
+
+        final actions = <game_action.Action>[
+          game_action.Action(
+            type: game_action.ActionType.SET_NUMBER,
+            position: pos,
+            oldCell: oldCell,
+            newCell: newCell,
+          ),
+        ];
+
+        if (await SettingsService.getAutoNotes()) {
+          actions.addAll(eraseNotesInRelatedCells(pos, placement.value));
+        }
+
+        if (actions.length == 1) {
+          addAction(actions.first);
+        } else {
+          addGroupedActions(actions);
+        }
+
+        AudioService.playNumberPlaceSound();
+      }
+    } else {
+      // Eliminations only touch pencil marks, and are recorded as one group so
+      // a single undo puts them all back.
+      final actions = <game_action.Action>[];
+
+      // Write the candidates the solver reasoned over first. Striking a 3 out
+      // of a cell means nothing if the player never pencilled a 3 there, so the
+      // notes have to exist before they can be removed. Which style depends on
+      // how the technique argues: a cell's full candidate set goes in the
+      // centre, a single digit tracked across a region goes at the side.
+      for (final note in lesson.notesToReveal()) {
+        final pos = note.cell;
+        final cell = gameState.grid[pos.row][pos.col];
+        if (cell.number != null || cell.isGiven) continue;
+
+        final side = Set<int>.from(cell.sideNotes);
+        final centre = Set<int>.from(cell.centerNotes);
+
+        if (lesson.noteStyle == NoteStyle.centre) {
+          if (!centre.add(note.value)) continue;
+        } else {
+          if (!side.add(note.value)) continue;
+        }
+
+        final oldCell = cell.copyWith();
+        final newCell = cell.copyWith(sideNotes: side, centerNotes: centre);
+        gameState.grid[pos.row][pos.col] = newCell;
+
+        actions.add(
+          game_action.Action(
+            type: lesson.noteStyle == NoteStyle.centre
+                ? game_action.ActionType.TOGGLE_CENTER_NOTE
+                : game_action.ActionType.TOGGLE_SIDE_NOTE,
+            position: pos,
+            oldCell: oldCell,
+            newCell: newCell,
+          ),
+        );
+      }
+
+      for (final elimination in step.eliminations) {
+        final pos =
+            Position(elimination.cell.row, elimination.cell.col);
+        final cell = gameState.grid[pos.row][pos.col];
+        if (cell.number != null) continue;
+
+        final side = Set<int>.from(cell.sideNotes)..remove(elimination.value);
+        final centre =
+            Set<int>.from(cell.centerNotes)..remove(elimination.value);
+
+        if (side.length == cell.sideNotes.length &&
+            centre.length == cell.centerNotes.length) {
+          continue;
+        }
+
+        final oldCell = cell.copyWith();
+        final newCell = cell.copyWith(sideNotes: side, centerNotes: centre);
+        gameState.grid[pos.row][pos.col] = newCell;
+
+        actions.add(
+          game_action.Action(
+            type: game_action.ActionType.TOGGLE_CENTER_NOTE,
+            position: pos,
+            oldCell: oldCell,
+            newCell: newCell,
+          ),
+        );
+      }
+
+      if (actions.length == 1) {
+        addAction(actions.first);
+      } else if (actions.length > 1) {
+        addGroupedActions(actions);
+      }
+    }
+
+    // Move the cached path on, so asking again gives the following step rather
+    // than repeating this one.
+    SolverService.markApplied();
+
+    gameState.clearHint();
+    await validateGrid();
+    updateHighlights();
+    notifyListeners();
   }
 
   void handleCellTap(int row, int col) {
@@ -136,6 +316,64 @@ class GameController extends ChangeNotifier {
 
     updateHighlights(); // Update which cells are highlighted
     notifyListeners(); // Trigger UI rebuild
+  }
+
+  /// Commits the lone remaining note in a cell as its answer.
+  ///
+  /// Bound to a double tap. Once a cell is pencilled down to a single
+  /// candidate, that candidate *is* the answer, and making the player switch
+  /// out of notes mode and hunt for the digit on the pad is busywork.
+  ///
+  /// Does nothing unless the cell is empty, editable, and holds exactly one
+  /// note across both note styles.
+  Future<void> promoteSingleNote(int row, int col) async {
+    final cell = gameState.grid[row][col];
+
+    if (cell.isGiven || cell.number != null) return;
+
+    final notes = {...cell.sideNotes, ...cell.centerNotes};
+    if (notes.length != 1) return;
+
+    final number = notes.first;
+    final pos = Position(row, col);
+    final oldCell = cell.copyWith();
+
+    final newCell = cell.copyWith(
+      number: number,
+      sideNotes: <int>{},
+      centerNotes: <int>{},
+    );
+
+    gameState.grid[row][col] = newCell;
+
+    final actions = <game_action.Action>[
+      game_action.Action(
+        type: game_action.ActionType.SET_NUMBER,
+        position: pos,
+        oldCell: oldCell,
+        newCell: newCell,
+      ),
+    ];
+
+    // Same follow-up as a normal placement, so a promoted note behaves
+    // identically to one typed on the number pad — including undo.
+    if (await SettingsService.getAutoNotes()) {
+      actions.addAll(eraseNotesInRelatedCells(pos, number));
+    }
+
+    if (actions.length == 1) {
+      addAction(actions.first);
+    } else {
+      addGroupedActions(actions);
+    }
+
+    AudioService.playNumberPlaceSound();
+    _countMistakeIfWrong(row, col, number);
+    ProgressService.recordNotePromotion();
+
+    await validateGrid();
+    updateHighlights();
+    notifyListeners();
   }
 
   Future<void> handleNumberInput(int number) async {
@@ -260,6 +498,11 @@ class GameController extends ChangeNotifier {
       // 🔥 NEW: If we just set a number (not erasing), auto-erase notes from related cells (if enabled)
       if (actionType == game_action.ActionType.SET_NUMBER &&
           newCell.number != null) {
+        // A wrong digit gets the error tone, a right one the placement tone —
+        // audible feedback that matches what the board shows.
+        final wrong = _countMistakeIfWrong(pos.row, pos.col, newCell.number!);
+        AudioService.play(wrong ? Sfx.error : Sfx.numberPlace);
+
         // ✅ Check if auto-notes setting is enabled
         final autoNotes = await SettingsService.getAutoNotes();
         if (autoNotes) {
@@ -473,6 +716,11 @@ class GameController extends ChangeNotifier {
     gameState.elapsedTime = Duration.zero;
     gameState.isPaused = false;
 
+    // A restart is a fresh attempt, so the hint and mistake tallies start over
+    // — otherwise a clean re-solve could never earn a purity award.
+    gameState.hintsUsedThisGame = 0;
+    gameState.mistakesThisGame = 0;
+
     // ✅ ADD THIS LINE:
     gameState.isCompleted = false; // Reset completion status
 
@@ -545,11 +793,19 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  /// Overrides the "show mistakes" setting for this session.
+  ///
+  /// The Dungeon sets this per mode — always on for Survival, always off for
+  /// Time Rush — without touching, or being touched by, the player's global
+  /// preference. Null means follow the setting.
+  bool? forceShowMistakes;
+
   Future<void> validateGrid() async {
     print('\n🔍 ========== VALIDATE GRID ==========');
 
     // ✅ Check if we should show mistakes
-    final showMistakes = await SettingsService.getShowMistakes();
+    final showMistakes =
+        forceShowMistakes ?? await SettingsService.getShowMistakes();
 
     if (!showMistakes) {
       print('⚙️ Show mistakes is OFF - skipping validation display');
@@ -564,6 +820,33 @@ class GameController extends ChangeNotifier {
       for (int c = 0; c < 9; c++) {
         gameState.grid[r][c].isError = false;
       }
+    }
+
+    // Preferred check: compare against the real solution, so a wrong digit is
+    // flagged the instant it is entered — even one that does not (yet) clash
+    // with another cell. Every puzzle ships a solution; only if one is missing
+    // do we fall back to conflict detection below.
+    final solution = Puzzles.getPuzzle(gameState.puzzleId)?.solution;
+    if (solution != null) {
+      int wrong = 0;
+      for (int r = 0; r < 9; r++) {
+        for (int c = 0; c < 9; c++) {
+          final cell = gameState.grid[r][c];
+          if (cell.isGiven || cell.number == null) continue;
+          if (cell.number != solution[r][c]) {
+            cell.isError = true;
+            wrong++;
+          }
+        }
+      }
+
+      if (wrong > 0) {
+        print('⚠️ $wrong wrong ${wrong == 1 ? 'digit' : 'digits'} vs solution');
+      } else {
+        await _checkIfComplete();
+      }
+      print('=====================================\n');
+      return;
     }
 
     int errorCount = 0;
@@ -630,6 +913,26 @@ class GameController extends ChangeNotifier {
     print('=====================================\n');
   }
 
+  /// Counts a wrong digit against this attempt.
+  ///
+  /// Compared against the puzzle's own solution rather than against row/column
+  /// conflicts: a digit can be conflict-free and still be wrong, and the purity
+  /// awards would be trivially farmable if it were not checked properly.
+  /// Records a wrong digit and returns whether it was one, so the caller can
+  /// choose the matching sound. A puzzle with no stored solution can prove
+  /// nothing wrong, so it is treated as correct.
+  bool _countMistakeIfWrong(int row, int col, int number) {
+    final solution = Puzzles.getPuzzle(gameState.puzzleId)?.solution;
+    if (solution == null) return false;
+
+    if (solution[row][col] != number) {
+      gameState.mistakesThisGame++;
+      print('❌ Mistake #${gameState.mistakesThisGame} at ($row, $col)');
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _checkIfComplete() async {
     // Don't check if already completed
     if (gameState.isCompleted) return;
@@ -646,21 +949,72 @@ class GameController extends ChangeNotifier {
       if (!isFilled) break;
     }
 
-    // If complete, mark it and save completion (but not the grid)
-    if (isFilled) {
-      print('🎉 PUZZLE COMPLETED!');
-      gameState.markCompleted();
+    if (!isFilled) return;
 
-      // 🔥 Save completion status and best time
-      await saveProgress();
-
-      // 🔥 Then immediately clear the grid save
-      await SaveService.clearSave(gameState.puzzleId);
-      print('🗑️ Cleared saved game grid for ${gameState.puzzleId}');
-
-      // The listener in GameScreen will show the dialog
+    // A full grid is not a solved grid. Every puzzle now ships its solution, so
+    // check against it — otherwise filling the board with wrong digits counted
+    // as a win, awarded a best time, and unlocked achievements.
+    final solution = Puzzles.getPuzzle(gameState.puzzleId)?.solution;
+    if (solution != null) {
+      for (int r = 0; r < 9; r++) {
+        for (int c = 0; c < 9; c++) {
+          if (gameState.grid[r][c].number != solution[r][c]) {
+            print('⚠️ Grid is full but not correct - not a completion');
+            return;
+          }
+        }
+      }
     }
+
+    print('🎉 PUZZLE COMPLETED!');
+    gameState.markCompleted();
+    AudioService.play(Sfx.success);
+
+    // Ranked play owns its own outcome (Elo, result screen) and must leave the
+    // realm's saves and solve log untouched.
+    if (ephemeral) return;
+
+    // Keep the finished board in the archive. The normal save is cleared on
+    // completion, so without this the solved grid would be lost.
+    await ArchiveService.record(gameState);
+
+    // 🔥 Save completion status and best time
+    await saveProgress();
+
+    // 🔥 Then immediately clear the grid save
+    await SaveService.clearSave(gameState.puzzleId);
+    print('🗑️ Cleared saved game grid for ${gameState.puzzleId}');
+
+    await _recordSolve();
+
+    // The listener in GameScreen will show the dialog
   }
+
+  /// Appends this finish to the solve log, which is what every achievement is
+  /// computed from.
+  Future<void> _recordSolve() async {
+    final realmName =
+        RealmConfig.realmForPuzzleId(gameState.puzzleId) ?? 'Unknown';
+
+    await ProgressService.recordSolve(
+      SolveRecord(
+        puzzleId: gameState.puzzleId,
+        realmName: realmName,
+        difficulty: gameState.difficulty,
+        seconds: gameState.elapsedSeconds,
+        hintsUsed: gameState.hintsUsedThisGame,
+        mistakes: gameState.mistakesThisGame,
+        finishedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  /// Awards earned by the finish that just happened, already marked as seen.
+  ///
+  /// Exposed for the game screen to display; kept here so the controller owns
+  /// all progress writes.
+  Future<List<Achievement>> collectNewAchievements() =>
+      AchievementService.collectNewlyUnlocked();
 
   void startTimer() {
     gameState.isPaused = false;

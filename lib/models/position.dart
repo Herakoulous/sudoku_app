@@ -2,7 +2,21 @@ class Position {
   final int row;
   final int col;
 
-  Position(this.row, this.col);
+  const Position(this.row, this.col);
+
+  /// 0-based box index, reading order.
+  int get boxIndex => (row ~/ 3) * 3 + (col ~/ 3);
+
+  /// How players say it: r4c7, 1-based. Used throughout hint explanations, so
+  /// the wording matches what a solver would read out loud.
+  String get label => 'r${row + 1}c${col + 1}';
+
+  /// Whether two cells share a row, column or box — "sees", in sudoku terms.
+  /// A cell does not see itself.
+  bool sees(Position other) {
+    if (this == other) return false;
+    return row == other.row || col == other.col || boxIndex == other.boxIndex;
+  }
 
   @override
   bool operator ==(Object other) {

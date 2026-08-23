@@ -72,9 +72,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _updateSoundEffects(bool value) async {
+    // Play the confirmation with whichever setting is momentarily true: a beep
+    // when switching off (still audible), and a beep after switching on. The
+    // cached flag has to be updated first, or the on-beep would be suppressed by
+    // the very setting it is confirming.
     if (!value) await AudioService.playToggleSound();
+
     await SettingsService.setSoundEffects(value);
+    AudioService.toggleSoundEffects(value);
     setState(() => _soundEffects = value);
+
     if (value) await AudioService.playToggleSound();
   }
 

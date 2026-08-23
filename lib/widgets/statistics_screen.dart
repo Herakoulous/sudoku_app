@@ -1,832 +1,629 @@
 import 'package:flutter/material.dart';
-import '../services/save_service.dart';
-import '../services/settings_service.dart';
+
 import '../data/realm_config.dart';
-import '../data/puzzles.dart';
-import 'dart:math' as math;
+import '../models/achievement.dart';
+import '../models/player_stats.dart';
+import '../services/achievement_service.dart';
+import '../services/progress_service.dart';
+import '../theme/app_theme.dart';
+import 'common/app_chrome.dart';
+import 'common/indicators.dart';
+import 'common/pressable.dart';
 
 class StatisticsScreen extends StatefulWidget {
-  const StatisticsScreen({Key? key}) : super(key: key);
+  /// False when shown as a root navigation tab.
+  final bool showBack;
+
+  const StatisticsScreen({super.key, this.showBack = true});
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
-  Map<String, dynamic> stats = {};
-  List<Achievement> achievements = [];
-  bool isLoading = true;
-  String _resolvedTheme = 'dark';
+  PlayerStats _stats = const PlayerStats();
+  List<AchievementStatus> _achievements = const [];
+  bool _loading = true;
+
+  int get _totalPuzzles {
+    var total = 0;
+    for (final realm in RealmConfig.realms) {
+      total += RealmConfig.getPuzzlesForRealm(realm.name).length;
+    }
+    return total;
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadTheme();
-    _loadStatistics();
+    _load();
   }
 
-  Future<void> _loadTheme() async {
-    final theme = await SettingsService.getResolvedTheme(context);
-    if (mounted) {
-      setState(() => _resolvedTheme = theme);
-    }
-  }
+  Future<void> _load() async {
+    final stats = await ProgressService.stats();
+    final achievements = AchievementService.statusesFor(stats);
 
-  Future<void> _loadStatistics() async {
-    List<String> allPuzzleIds = [];
-    for (var realmName in RealmConfig.realmPuzzles.keys) {
-      final puzzles = RealmConfig.getPuzzlesForRealm(realmName);
-      allPuzzleIds.addAll(puzzles.map((p) => p.id));
-    }
-
-    int totalPuzzles = allPuzzleIds.length;
-    int completedCount = 0;
-    int totalTimeCompleted = 0;
-    int totalStars = 0;
-    List<Map<String, dynamic>> fastestCompletions = [];
-    List<Map<String, dynamic>> slowestCompletions = [];
-    Map<String, int> realmCompletions = {};
-
-    for (String puzzleId in allPuzzleIds) {
-      bool isCompleted = await SaveService.isCompleted(puzzleId);
-      if (isCompleted) {
-        completedCount++;
-        int? bestTime = await SaveService.getBestTime(puzzleId);
-        if (bestTime != null) {
-          totalTimeCompleted += bestTime;
-
-          final puzzle = Puzzles.getPuzzle(puzzleId);
-          if (puzzle != null) {
-            totalStars += puzzle.difficulty;
-
-            String realmName = '';
-            for (var realm in RealmConfig.realmPuzzles.entries) {
-              if (realm.value.any((p) => p.id == puzzleId)) {
-                realmName = realm.key;
-                realmCompletions[realmName] =
-                    (realmCompletions[realmName] ?? 0) + 1;
-                break;
-              }
-            }
-
-            fastestCompletions.add({
-              'puzzleId': puzzleId,
-              'realmName': realmName,
-              'difficulty': puzzle.difficulty,
-              'time': bestTime,
-              'displayName': _getPuzzleDisplayName(puzzleId, realmName),
-            });
-          }
-        }
-      }
-    }
-
-    fastestCompletions.sort((a, b) => a['time'].compareTo(b['time']));
-    slowestCompletions = List.from(fastestCompletions.reversed);
-
-    int avgTime =
-        completedCount > 0 ? (totalTimeCompleted / completedCount).round() : 0;
-    int totalTimePlayed = await SaveService.getTotalPlayTime();
-    int hintsUsed = await SaveService.getTotalHintsUsed();
-
-    achievements = _calculateAchievements(
-      completedCount: completedCount,
-      totalPuzzles: totalPuzzles,
-      avgTime: avgTime,
-      totalStars: totalStars,
-      hintsUsed: hintsUsed,
-      fastestTime:
-          fastestCompletions.isNotEmpty ? fastestCompletions.first['time'] : 0,
-      realmCompletions: realmCompletions,
-    );
-
+    if (!mounted) return;
     setState(() {
-      stats = {
-        'totalPuzzles': totalPuzzles,
-        'completedCount': completedCount,
-        'completionPercentage': totalPuzzles > 0
-            ? ((completedCount / totalPuzzles) * 100).round()
-            : 0,
-        'averageTime': avgTime,
-        'totalTime': totalTimePlayed,
-        'totalStars': totalStars,
-        'hintsUsed': hintsUsed,
-        'fastestCompletions': fastestCompletions.take(3).toList(),
-        'slowestCompletions': slowestCompletions.take(3).toList(),
-      };
-      isLoading = false;
+      _stats = stats;
+      _achievements = achievements;
+      _loading = false;
     });
   }
 
-  String _getPuzzleDisplayName(String puzzleId, String realmName) {
-    final parts = puzzleId.split('_');
-    if (parts.length >= 2) {
-      final type = parts[0];
-      final number = parts[1];
-      return '${type[0].toUpperCase()}${type.substring(1)} $number';
-    }
-    return puzzleId;
+  // ---------------------------------------------------------------------------
+  // FORMATTING
+  // ---------------------------------------------------------------------------
+
+  String _clock(int seconds) {
+    if (seconds <= 0) return '—';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
-  List<Achievement> _calculateAchievements({
-    required int completedCount,
-    required int totalPuzzles,
-    required int avgTime,
-    required int totalStars,
-    required int hintsUsed,
-    required int fastestTime,
-    required Map<String, int> realmCompletions,
-  }) {
-    return [
-      Achievement(
-          icon: Icons.school,
-          name: 'First Steps',
-          description: 'Complete your first puzzle',
-          unlocked: completedCount >= 1),
-      Achievement(
-          icon: Icons.looks_5,
-          name: 'Getting Started',
-          description: 'Complete 5 puzzles',
-          unlocked: completedCount >= 5),
-      Achievement(
-          icon: Icons.filter_9,
-          name: 'Puzzle Enthusiast',
-          description: 'Complete 9 puzzles',
-          unlocked: completedCount >= 9),
-      Achievement(
-          icon: Icons.looks_two,
-          name: 'Quarter Master',
-          description: 'Complete 25% of all puzzles',
-          unlocked: (completedCount / totalPuzzles) >= 0.25),
-      Achievement(
-          icon: Icons.looks_3,
-          name: 'Half Way There',
-          description: 'Complete 50% of all puzzles',
-          unlocked: (completedCount / totalPuzzles) >= 0.50),
-      Achievement(
-          icon: Icons.fort,
-          name: 'Realm Conqueror',
-          description: 'Complete 75% of all puzzles',
-          unlocked: (completedCount / totalPuzzles) >= 0.75),
-      Achievement(
-          icon: Icons.collections_bookmark,
-          name: 'Completionist',
-          description: 'Complete all puzzles',
-          unlocked: completedCount == totalPuzzles && totalPuzzles > 0),
-      Achievement(
-          icon: Icons.local_fire_department,
-          name: 'Speed Demon',
-          description: 'Average time under 5 minutes',
-          unlocked: completedCount > 0 && avgTime < 300),
-      Achievement(
-          icon: Icons.flash_on,
-          name: 'Lightning Fast',
-          description: 'Complete a puzzle in under 2 minutes',
-          unlocked: fastestTime > 0 && fastestTime < 120),
-      Achievement(
-          icon: Icons.star,
-          name: 'Star Collector',
-          description: 'Collect 100 stars',
-          unlocked: totalStars >= 100),
-      Achievement(
-          icon: Icons.star_rate,
-          name: 'Star Master',
-          description: 'Collect 250 stars',
-          unlocked: totalStars >= 250),
-      Achievement(
-          icon: Icons.diamond,
-          name: 'Perfectionist',
-          description: 'Complete 10 puzzles without hints',
-          unlocked: completedCount >= 10 && hintsUsed == 0),
-      Achievement(
-          icon: Icons.psychology,
-          name: 'Brain Teaser',
-          description: 'Use less than 5 hints total',
-          unlocked: hintsUsed < 5 && completedCount >= 5),
-      Achievement(
-          icon: Icons.castle,
-          name: 'Realm Master',
-          description: 'Complete all puzzles in any realm',
-          unlocked: realmCompletions.values.any((count) => count >= 20)),
-      Achievement(
-          icon: Icons.wb_sunny,
-          name: 'Early Bird',
-          description: 'Play before 9 AM',
-          unlocked: false),
-      Achievement(
-          icon: Icons.nightlight,
-          name: 'Night Owl',
-          description: 'Play after 10 PM',
-          unlocked: false),
-      Achievement(
-          icon: Icons.trending_up,
-          name: 'Consistent Player',
-          description: 'Complete puzzles 3 days in a row',
-          unlocked: false),
-      Achievement(
-          icon: Icons.emoji_events,
-          name: 'Champion',
-          description: 'Complete 50 puzzles',
-          unlocked: completedCount >= 50),
-      Achievement(
-          icon: Icons.military_tech,
-          name: 'Legend',
-          description: 'Complete 100 puzzles',
-          unlocked: completedCount >= 100),
-    ];
-  }
-
-  String _formatTime(int seconds) {
-    int minutes = seconds ~/ 60;
-    int secs = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-  }
-
-  String _formatTotalTime(int seconds) {
-    int hours = seconds ~/ 3600;
-    int minutes = (seconds % 3600) ~/ 60;
-    return '${hours}h ${minutes}m';
-  }
-
-  Color _getBackgroundColor() {
-    return _resolvedTheme == 'dark' ? Colors.black : Color(0xFFF5F5F5);
-  }
-
-  Color _getCardColor() {
-    return _resolvedTheme == 'dark' ? Color(0xFF1A1A1A) : Colors.white;
-  }
-
-  Color _getTextColor() {
-    return _resolvedTheme == 'dark' ? Colors.white : Colors.black87;
-  }
-
-  Color _getBorderColor() {
-    return Color(0xFFFFAE00).withOpacity(_resolvedTheme == 'dark' ? 0.3 : 0.5);
-  }
-
-  Color _getAccentColor() {
-    return Color(0xFFFFAE00);
+  /// Compact duration for totals: "4h 12m", "37m", "48s".
+  String _span(int seconds) {
+    if (seconds <= 0) return '—';
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    if (h > 0) return '${h}h ${m}m';
+    if (m > 0) return '${m}m';
+    return '${seconds}s';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return Scaffold(
-        backgroundColor: _getBackgroundColor(),
-        body: Center(
-          child: CircularProgressIndicator(color: _getAccentColor()),
-        ),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: _getBackgroundColor(),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Column(
-                  children: [
-                    _buildOverallProgressCard(),
-                    SizedBox(height: 24),
-                    _buildStatsGrid(),
-                    SizedBox(height: 24),
-                    if (stats['fastestCompletions'].isNotEmpty)
-                      _buildCompletionsList(
-                          'Fastest Completions', stats['fastestCompletions']),
-                    if (stats['fastestCompletions'].isNotEmpty)
-                      SizedBox(height: 24),
-                    if (stats['slowestCompletions'].isNotEmpty)
-                      _buildCompletionsList(
-                          'Slowest Completions', stats['slowestCompletions']),
-                    if (stats['slowestCompletions'].isNotEmpty)
-                      SizedBox(height: 24),
-                    _buildAchievementsSection(),
-                    SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              height: 40,
-              width: 40,
-              decoration: BoxDecoration(
-                color: _resolvedTheme == 'dark'
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _getBorderColor()),
-              ),
-              child: Icon(
-                Icons.arrow_back,
-                color: _getAccentColor(),
-                size: 24,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              'Statistics',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: _getTextColor(),
-                letterSpacing: 2,
-                fontFamily: 'CinzelDecorative',
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(width: 40),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOverallProgressCard() {
-    return Container(
-      padding: EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: _getCardColor(),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _getBorderColor()),
-        boxShadow: _resolvedTheme == 'light'
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        children: [
-          Text(
-            'Overall Progress',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: _getTextColor(),
-              letterSpacing: 1.5,
-            ),
-          ),
-          SizedBox(height: 24),
-          SizedBox(
-            height: 160,
-            width: 160,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CustomPaint(
-                  size: Size(160, 160),
-                  painter: CircularProgressPainter(
-                    progress: stats['completionPercentage'] / 100,
-                    isDarkMode: _resolvedTheme == 'dark',
-                  ),
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${stats['completionPercentage']}%',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w700,
-                        color: _getTextColor(),
-                      ),
-                    ),
-                    Text(
-                      'Completed',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _getAccentColor().withOpacity(0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 24),
-          Column(
+      backgroundColor: AppColors.ink,
+      body: AppBackground(
+        accentGlow: AppColors.gold,
+        child: SafeArea(
+          child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Total Puzzles Completed',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: _getTextColor(),
-                    ),
-                  ),
-                  Text(
-                    '${stats['completedCount']} / ${stats['totalPuzzles']}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _getAccentColor(),
-                    ),
-                  ),
-                ],
+              AppTopBar(
+                title: 'Statistics',
+                onBack: widget.showBack ? () => Navigator.pop(context) : null,
               ),
-              SizedBox(height: 8),
-              Container(
-                height: 8,
-                decoration: BoxDecoration(
-                  color: _getAccentColor().withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: FractionallySizedBox(
-                  widthFactor:
-                      (stats['completionPercentage'] / 100).clamp(0.0, 1.0),
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: _getAccentColor(),
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _getAccentColor().withOpacity(0.5),
-                          blurRadius: 10,
+              Expanded(
+                child: _loading
+                    ? const Center(
+                        child: SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.gold,
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
+                      )
+                    : _body(),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildStatsGrid() {
-    return Column(
+  Widget _body() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.gutter,
+        0,
+        AppSpace.gutter,
+        AppSpace.xxl,
+      ),
       children: [
-        _buildFullWidthStatCard(Icons.timer, 'Average Time',
-            _formatTime(stats['averageTime']), true),
-        SizedBox(height: 16),
-        _buildFullWidthStatCard(Icons.hourglass_top, 'Total Play Time',
-            _formatTotalTime(stats['totalTime']), false),
-        SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-                child: _buildSmallStatCard(
-                    Icons.star, 'Stars', '${stats['totalStars']}', true)),
-            SizedBox(width: 16),
-            Expanded(
-                child: _buildSmallStatCard(Icons.lightbulb, 'Hints Used',
-                    '${stats['hintsUsed']}', false)),
-          ],
+        FadeSlideIn(child: _headline()),
+        const SizedBox(height: AppSpace.xl),
+
+        FadeSlideIn(
+          delay: AppMotion.stagger(1),
+          child: const SectionLabel(label: 'At a glance'),
         ),
+        const SizedBox(height: AppSpace.sm),
+        FadeSlideIn(delay: AppMotion.stagger(1), child: _glanceGrid()),
+        const SizedBox(height: AppSpace.xl),
+
+        FadeSlideIn(
+          delay: AppMotion.stagger(2),
+          child: const SectionLabel(label: 'Realms'),
+        ),
+        const SizedBox(height: AppSpace.sm),
+        FadeSlideIn(delay: AppMotion.stagger(2), child: _realmList()),
+
+        const SizedBox(height: AppSpace.xl),
+        FadeSlideIn(
+          delay: AppMotion.stagger(4),
+          child: SectionLabel(
+            label: 'Achievements',
+            trailing: '${_achievements.where((a) => a.unlocked).length}'
+                ' / ${_achievements.length}',
+          ),
+        ),
+        const SizedBox(height: AppSpace.md),
+        _achievementSections(),
       ],
     );
   }
 
-  Widget _buildFullWidthStatCard(
-      IconData icon, String label, String value, bool glow) {
+  // ---------------------------------------------------------------------------
+  // HEADLINE
+  // ---------------------------------------------------------------------------
+
+  Widget _headline() {
+    final total = _totalPuzzles;
+    final fraction = total == 0 ? 0.0 : _stats.solves / total;
+    final percent = (fraction * 100).round();
+
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.lg),
       decoration: BoxDecoration(
-        color: _getCardColor(),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _getBorderColor()),
-        boxShadow: _resolvedTheme == 'light'
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ]
-            : null,
+        color: AppColors.surfaceRaised.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: AppColors.stroke),
+        boxShadow: AppShadow.soft,
       ),
       child: Column(
         children: [
-          Icon(icon,
-              color:
-                  glow ? _getAccentColor() : _getAccentColor().withOpacity(0.7),
-              size: 32),
-          SizedBox(height: 8),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: _getTextColor())),
-          SizedBox(height: 4),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  color: _getTextColor())),
+          Row(
+            children: [
+              ProgressRing(
+                progress: fraction,
+                size: 76,
+                strokeWidth: 5,
+                center: Text(
+                  '$percent%',
+                  style: AppType.numeric.copyWith(fontSize: 17),
+                ),
+              ),
+              const SizedBox(width: AppSpace.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('PUZZLES SOLVED', style: AppType.overline),
+                    const SizedBox(height: AppSpace.xxs),
+                    // FittedBox: a four-digit count on a narrow screen must
+                    // shrink rather than overflow its row.
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text('${_stats.solves}', style: AppType.numericLarge),
+                          Text(
+                            ' / $total',
+                            style: AppType.numeric.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.xs),
+                    if (_stats.currentStreakDays > 0)
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.local_fire_department_rounded,
+                            size: 14,
+                            color: AppColors.warning,
+                          ),
+                          const SizedBox(width: AppSpace.xxs),
+                          Expanded(
+                            child: Text(
+                              '${_stats.currentStreakDays} day streak',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppType.label.copyWith(
+                                fontSize: 12,
+                                color: AppColors.warning,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        _stats.solves == 0
+                            ? 'Solve one to begin'
+                            : 'No active streak',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.label.copyWith(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.md),
+          ProgressBar(progress: fraction),
         ],
       ),
     );
   }
 
-  Widget _buildSmallStatCard(
-      IconData icon, String label, String value, bool glow) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _getCardColor(),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _getBorderColor()),
-        boxShadow: _resolvedTheme == 'light'
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        children: [
-          Icon(icon,
-              color:
-                  glow ? _getAccentColor() : _getAccentColor().withOpacity(0.7),
-              size: 32),
-          SizedBox(height: 8),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: _getTextColor()),
-              textAlign: TextAlign.center),
-          SizedBox(height: 4),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: _getTextColor())),
-        ],
-      ),
-    );
-  }
+  // ---------------------------------------------------------------------------
+  // AT A GLANCE
+  // ---------------------------------------------------------------------------
 
-  Widget _buildCompletionsList(String title, List<Map<String, dynamic>> items) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _getCardColor(),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _getBorderColor()),
-        boxShadow: _resolvedTheme == 'light'
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: _getTextColor(),
-                  letterSpacing: 1.5)),
-          SizedBox(height: 16),
-          ...items.map((item) => _buildCompletionItem(item)).toList(),
-        ],
-      ),
-    );
-  }
+  Widget _glanceGrid() {
+    final tiles = <Widget>[
+      _statTile(Icons.star_rounded, 'Stars', '${_stats.totalStars}'),
+      _statTile(Icons.schedule_rounded, 'Time played',
+          _span(_stats.totalPlaySeconds)),
+      _statTile(Icons.bolt_rounded, 'Best time', _clock(_stats.fastestSeconds)),
+      _statTile(Icons.timeline_rounded, 'Average', _clock(_stats.averageSeconds)),
+      _statTile(
+          Icons.lightbulb_outline_rounded, 'Hints used', '${_stats.totalHintsUsed}'),
+      _statTile(Icons.verified_rounded, 'Perfect solves', '${_stats.perfectSolves}'),
+      _statTile(Icons.calendar_month_rounded, 'Days played',
+          '${_stats.distinctDaysPlayed}'),
+      _statTile(Icons.emoji_events_rounded, 'Longest streak',
+          _stats.longestStreakDays == 0 ? '—' : '${_stats.longestStreakDays}d'),
+    ];
 
-  Widget _buildCompletionItem(Map<String, dynamic> item) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: _getBorderColor(), width: 1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
+    // Two per row, laid out with Expanded so a long value can never push the
+    // row wider than the screen.
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += 2) {
+      rows.add(
+        Padding(
+          padding: EdgeInsets.only(
+            bottom: i + 2 >= tiles.length ? 0 : AppSpace.xs,
+          ),
+          // IntrinsicHeight gives the row a bounded height, which is what lets
+          // the two tiles stretch to match each other. Plain `stretch` inside a
+          // scroll view asks for infinite height and fails to lay out.
+          child: IntrinsicHeight(
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  item['displayName'],
-                  style: TextStyle(
-                      fontSize: 12, color: _getTextColor().withOpacity(0.7)),
-                ),
-                SizedBox(width: 8),
-                Row(
-                  children: List.generate(
-                    item['difficulty'],
-                    (index) =>
-                        Icon(Icons.star, size: 12, color: _getAccentColor()),
-                  ),
+                Expanded(child: tiles[i]),
+                const SizedBox(width: AppSpace.xs),
+                Expanded(
+                  child: i + 1 < tiles.length
+                      ? tiles[i + 1]
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),
           ),
-          Text(
-            _formatTime(item['time']),
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: _getTextColor()),
+        ),
+      );
+    }
+
+    return Column(children: rows);
+  }
+
+  Widget _statTile(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.strokeSoft),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppColors.gold),
+          const SizedBox(width: AppSpace.xs),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.overline.copyWith(fontSize: 9),
+                ),
+                const SizedBox(height: 1),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(value, style: AppType.numeric),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAchievementsSection() {
-    final unlockedCount = achievements.where((a) => a.unlocked).length;
+  // ---------------------------------------------------------------------------
+  // REALMS
+  // ---------------------------------------------------------------------------
+
+  Widget _realmList() {
+    return Column(
+      children: [
+        for (final realm in RealmConfig.realms)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpace.sm),
+            child: _realmRow(realm),
+          ),
+      ],
+    );
+  }
+
+  Widget _realmRow(Realm realm) {
+    final total = RealmConfig.getPuzzlesForRealm(realm.name).length;
+    final solved = _stats.realmSolves(realm.name);
+    final fraction = total == 0 ? 0.0 : solved / total;
+    final done = solved >= total && total > 0;
 
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.sm),
       decoration: BoxDecoration(
-        color: _getCardColor(),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _getBorderColor()),
-        boxShadow: _resolvedTheme == 'light'
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ]
-            : null,
+        color: AppColors.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: done
+              ? realm.primary.withValues(alpha: 0.5)
+              : AppColors.strokeSoft,
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Achievements',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: _getTextColor(),
-                      letterSpacing: 1.5)),
-              Text('$unlockedCount/${achievements.length}',
-                  style: TextStyle(fontSize: 14, color: _getAccentColor())),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: realm.primary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: AppSpace.xs),
+              Expanded(
+                child: Text(
+                  realm.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.label.copyWith(color: AppColors.textPrimary),
+                ),
+              ),
+              const SizedBox(width: AppSpace.xs),
+              if (done)
+                Icon(Icons.verified_rounded, size: 14, color: realm.primary),
+              if (done) const SizedBox(width: AppSpace.xxs),
+              Text(
+                '$solved/$total',
+                style: AppType.numeric.copyWith(
+                  fontSize: 12,
+                  color: done ? realm.primary : AppColors.textMuted,
+                ),
+              ),
             ],
           ),
-          SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.75,
-            ),
-            itemCount: achievements.length,
-            itemBuilder: (context, index) =>
-                _buildAchievement(achievements[index]),
-          ),
+          const SizedBox(height: AppSpace.xs),
+          ProgressBar(progress: fraction, color: realm.primary, height: 4),
         ],
       ),
     );
   }
 
-  Widget _buildAchievement(Achievement achievement) {
-    return GestureDetector(
-      onTap: () => _showAchievementDetails(achievement),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: achievement.unlocked
-                  ? _getAccentColor().withOpacity(0.2)
-                  : (_resolvedTheme == 'dark'
-                      ? Colors.white.withOpacity(0.05)
-                      : Colors.black.withOpacity(0.05)),
-              borderRadius: BorderRadius.circular(40),
-              border: Border.all(
-                color: achievement.unlocked
-                    ? _getAccentColor().withOpacity(0.5)
-                    : (_resolvedTheme == 'dark'
-                        ? Colors.white.withOpacity(0.1)
-                        : Colors.black.withOpacity(0.1)),
+  // ---------------------------------------------------------------------------
+  // PERSONAL BESTS
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // ACHIEVEMENTS
+  // ---------------------------------------------------------------------------
+
+  Widget _achievementSections() {
+    final sections = <Widget>[];
+
+    for (final category in AchievementCategory.values) {
+      final group =
+          _achievements.where((s) => s.achievement.category == category).toList();
+      if (group.isEmpty) continue;
+
+      final unlocked = group.where((s) => s.unlocked).length;
+
+      // The category's colour is the tier of its most impressive unlocked
+      // award, so a well-developed category glows in gold or purple while a
+      // fresh one stays neutral — a second layer of colour beyond the tiles.
+      AchievementTier? topTier;
+      for (final s in group.where((s) => s.unlocked)) {
+        if (topTier == null || s.achievement.tier.index > topTier.index) {
+          topTier = s.achievement.tier;
+        }
+      }
+      final accent = topTier?.color ?? AppColors.textMuted;
+
+      sections.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpace.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.xs),
+                  Expanded(
+                    child: Text(
+                      category.label,
+                      style: AppType.label.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$unlocked/${group.length}',
+                    style: AppType.overline.copyWith(
+                      color: unlocked > 0 ? accent : AppColors.textMuted,
+                    ),
+                  ),
+                ],
               ),
-              boxShadow: achievement.unlocked
-                  ? [
-                      BoxShadow(
-                          color: _getAccentColor().withOpacity(0.3),
-                          blurRadius: 10)
-                    ]
-                  : [],
-            ),
-            child: Icon(
-              achievement.icon,
-              color: achievement.unlocked
-                  ? _getAccentColor()
-                  : _getTextColor().withOpacity(0.3),
-              size: 24,
-            ),
+              const SizedBox(height: AppSpace.xs),
+              _achievementGrid(group),
+            ],
           ),
-          SizedBox(height: 4),
-          Text(
-            achievement.name,
-            style: TextStyle(
-              fontSize: 8,
-              color: achievement.unlocked
-                  ? _getAccentColor().withOpacity(0.9)
-                  : _getTextColor().withOpacity(0.4),
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
+
+    return Column(children: sections);
+  }
+
+  Widget _achievementGrid(List<AchievementStatus> group) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Denser than before — square colour badges with no per-tile text pack
+        // five or six to a row, so a category reads as a bright collection
+        // rather than a sparse list. The name lives in the tap dialog.
+        final columns = constraints.maxWidth < 340 ? 5 : 6;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: AppSpace.xxs + 2,
+            mainAxisSpacing: AppSpace.xxs + 2,
+            childAspectRatio: 1,
           ),
-        ],
-      ),
+          itemCount: group.length,
+          itemBuilder: (context, i) => _AchievementTile(
+            status: group[i],
+            onTap: () => _showAchievement(group[i]),
+          ),
+        );
+      },
     );
   }
 
-  void _showAchievementDetails(Achievement achievement) {
-    showDialog(
+  void _showAchievement(AchievementStatus status) {
+    final achievement = status.achievement;
+    final hidden = achievement.secret && !status.unlocked;
+    final tint =
+        status.unlocked ? achievement.tier.color : AppColors.textSecondary;
+
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: _getCardColor(),
+        backgroundColor: AppColors.surfaceRaised,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: _getBorderColor()),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          side: const BorderSide(color: AppColors.stroke),
+        ),
+        titlePadding: const EdgeInsets.fromLTRB(
+          AppSpace.lg,
+          AppSpace.lg,
+          AppSpace.lg,
+          AppSpace.xs,
         ),
         title: Row(
           children: [
-            Icon(achievement.icon,
-                color: achievement.unlocked
-                    ? _getAccentColor()
-                    : _getTextColor().withOpacity(0.3),
-                size: 32),
-            SizedBox(width: 12),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: tint.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: tint.withValues(alpha: 0.45)),
+              ),
+              child: Icon(
+                hidden ? Icons.lock_outline_rounded : achievement.icon,
+                color: tint,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: AppSpace.sm),
             Expanded(
-              child: Text(achievement.name,
-                  style: TextStyle(color: _getTextColor(), fontSize: 18)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hidden ? 'Secret Award' : achievement.name,
+                    style: AppType.titleMedium,
+                  ),
+                  Text(
+                    '${achievement.tier.label} · ${achievement.category.label}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.overline.copyWith(color: tint),
+                  ),
+                ],
+              ),
             ),
           ],
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(
+          AppSpace.lg,
+          AppSpace.xs,
+          AppSpace.lg,
+          AppSpace.md,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(achievement.description,
-                style: TextStyle(
-                    color: _getTextColor().withOpacity(0.7), fontSize: 14)),
-            SizedBox(height: 16),
+            Text(
+              hidden
+                  ? 'Keep playing to discover this one.'
+                  : achievement.description,
+              style: AppType.body,
+            ),
+            if (!hidden && achievement.target > 1) ...[
+              const SizedBox(height: AppSpace.md),
+              ProgressBar(progress: status.fraction, color: tint, height: 5),
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                '${status.progress} of ${achievement.target}',
+                style: AppType.label.copyWith(fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: AppSpace.md),
             Container(
-              padding: EdgeInsets.all(8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.xs,
+                vertical: AppSpace.xxs + 1,
+              ),
               decoration: BoxDecoration(
-                color: achievement.unlocked
-                    ? _getAccentColor().withOpacity(0.2)
-                    : (_resolvedTheme == 'dark'
-                        ? Colors.white.withOpacity(0.05)
-                        : Colors.black.withOpacity(0.05)),
-                borderRadius: BorderRadius.circular(8),
+                color: tint.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(achievement.unlocked ? Icons.check_circle : Icons.lock,
-                      color: achievement.unlocked
-                          ? _getAccentColor()
-                          : _getTextColor().withOpacity(0.3),
-                      size: 16),
-                  SizedBox(width: 8),
-                  Text(achievement.unlocked ? 'UNLOCKED' : 'LOCKED',
-                      style: TextStyle(
-                          color: achievement.unlocked
-                              ? _getAccentColor()
-                              : _getTextColor().withOpacity(0.3),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12)),
+                  Icon(
+                    status.unlocked
+                        ? Icons.check_circle_rounded
+                        : Icons.lock_rounded,
+                    size: 14,
+                    color: tint,
+                  ),
+                  const SizedBox(width: AppSpace.xxs + 1),
+                  Text(
+                    status.unlocked ? 'UNLOCKED' : 'LOCKED',
+                    style: AppType.overline.copyWith(color: tint),
+                  ),
                 ],
               ),
             ),
@@ -835,7 +632,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Close', style: TextStyle(color: _getAccentColor())),
+            child: Text(
+              'Close',
+              style: AppType.label.copyWith(color: AppColors.gold),
+            ),
           ),
         ],
       ),
@@ -843,56 +643,94 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 }
 
-class Achievement {
-  final IconData icon;
-  final String name;
-  final String description;
-  final bool unlocked;
+/// One achievement in the grid.
+///
+/// Progress is drawn as a ring around the icon rather than as an extra line of
+/// text. The old tile stacked icon, name and a progress label in a fixed-height
+/// cell, and the third element was what pushed it into overflow.
+class _AchievementTile extends StatelessWidget {
+  final AchievementStatus status;
+  final VoidCallback onTap;
 
-  Achievement({
-    required this.icon,
-    required this.name,
-    required this.description,
-    required this.unlocked,
-  });
-}
-
-class CircularProgressPainter extends CustomPainter {
-  final double progress;
-  final bool isDarkMode;
-
-  CircularProgressPainter({required this.progress, required this.isDarkMode});
+  const _AchievementTile({required this.status, required this.onTap});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 8;
+  Widget build(BuildContext context) {
+    final achievement = status.achievement;
+    final unlocked = status.unlocked;
+    final hidden = achievement.secret && !unlocked;
+    final tint = achievement.tier.color;
 
-    final backgroundPaint = Paint()
-      ..color = Color(0xFFFFAE00).withOpacity(0.1)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8;
+    return Pressable(
+      onTap: onTap,
+      pressedScale: 0.90,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final side = constraints.maxWidth;
+          final radius = side * 0.28;
 
-    canvas.drawCircle(center, radius, backgroundPaint);
-
-    final progressPaint = Paint()
-      ..color = Color(0xFFFFAE00)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2,
-      2 * math.pi * progress,
-      false,
-      progressPaint,
+          // Unlocked badges are filled with their tier colour so the grid reads
+          // as a bright trophy case; locked ones stay dim, and in-progress ones
+          // wear a completion ring drawn *over* the icon so it is never hidden
+          // behind the badge.
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: side,
+                height: side,
+                decoration: BoxDecoration(
+                  gradient: unlocked
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color.lerp(tint, Colors.white, 0.22)!,
+                            tint,
+                            Color.lerp(tint, Colors.black, 0.18)!,
+                          ],
+                          stops: const [0.0, 0.5, 1.0],
+                        )
+                      : null,
+                  color: unlocked ? null : AppColors.surface,
+                  borderRadius: BorderRadius.circular(radius),
+                  border: Border.all(
+                    color: unlocked
+                        ? Color.lerp(tint, Colors.white, 0.3)!
+                            .withValues(alpha: 0.6)
+                        : AppColors.strokeSoft,
+                  ),
+                  boxShadow: unlocked
+                      ? AppShadow.glow(tint, opacity: 0.4, blur: 10)
+                      : null,
+                ),
+                child: Icon(
+                  hidden ? Icons.lock_outline_rounded : achievement.icon,
+                  size: side * 0.46,
+                  color: unlocked
+                      ? _readableOn(tint)
+                      : AppColors.textMuted.withValues(alpha: 0.7),
+                ),
+              ),
+              // The completion ring sits on top of the badge, so partial
+              // progress reads clearly over the icon rather than peeking out
+              // from behind it.
+              if (status.inProgress)
+                ProgressRing(
+                  progress: status.fraction,
+                  size: side,
+                  strokeWidth: 3,
+                  color: tint,
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 
-  @override
-  bool shouldRepaint(CircularProgressPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.isDarkMode != isDarkMode;
-  }
+  /// Black or white icon, whichever reads against the tier colour — so gold and
+  /// silver badges get a dark glyph and the darker tiers a light one.
+  static Color _readableOn(Color background) =>
+      background.computeLuminance() > 0.55 ? const Color(0xFF17120A) : Colors.white;
 }

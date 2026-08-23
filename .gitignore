@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Puzzle generation intermediates (regenerate with tools/build_puzzle_set.py)
+tools/__pycache__/
+tools/*.log
+tools/janko_cache/
+tools/generated/
